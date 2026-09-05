@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "NeuroLens",
+      "hasCanvas": false,
+      "bodyTextLen": 10656,
+      "bodyTextHash": "c0de45c2b479bf25c43fc94616b8c13fdbdfeba8140514b10f45f84aa1ae635c",
+      "bodyTextPrefix": "Skip to content NeuroLens Explore Read Library Insights Settings",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "NeuroLens",
+      "hasCanvas": false,
+      "bodyTextLen": 10648,
+      "bodyTextHash": "f0a39f2226581b6a5342d78cb4098a11c6df08ed41ceac88a7cf5095ea328655",
+      "bodyTextPrefix": "Skip to content Explore Read Library Insights Settings Adaptive ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
