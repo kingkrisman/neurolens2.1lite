@@ -4,11 +4,11 @@ import { b as require_jsx_runtime } from "../_libs/@radix-ui/react-accordion+[..
 import { n as gsapWithCSS, t as useGSAP } from "../_libs/gsap+gsap__react.mjs";
 import { o as FEATURED_PASSAGES, s as fetchPassage, u as passageToReaderText } from "./bible-api-h6m_SDja.mjs";
 import { A as BookOpen, c as Sparkles, g as Library, l as Settings2, v as Highlighter, y as Eye } from "../_libs/lucide-react.mjs";
-import { $ as useReducedMotion, R as remoteMessage, S as TABS, V as Kbd, X as easeOut, Z as registerGsap, b as READING_PROFILES, y as NAMED_PRESETS } from "./router-Bg1qn7IF.mjs";
+import { $ as useReducedMotion, R as remoteMessage, S as TABS, V as Kbd, X as easeOut, Z as registerGsap, b as READING_PROFILES, y as NAMED_PRESETS } from "./router-BR13pP-z.mjs";
 import { n as toast } from "../_libs/sonner.mjs";
-import { K as splitPdfPages, X as useAppStore, _ as searchBook, q as splitTextChapters, y as SAMPLE_TEXTS } from "./routes-c6I-T1-E.mjs";
+import { K as splitPdfPages, X as useAppStore, _ as searchBook, q as splitTextChapters, y as SAMPLE_TEXTS } from "./routes-DSsj-njg.mjs";
 import { t as _e } from "../_libs/cmdk.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/command-palette-5D99wA0E.js
+//#region node_modules/.nitro/vite/services/ssr/assets/command-palette-cJmNBFvJ.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 registerGsap();

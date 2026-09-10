@@ -1,6 +1,6 @@
 import { b as require_jsx_runtime } from "../_libs/@radix-ui/react-accordion+[...].mjs";
-import { n as PublicLayout } from "./router-Bg1qn7IF.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/privacy-CnFSHIQx.js
+import { n as PublicLayout } from "./router-BR13pP-z.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/privacy-BDT5i5eh.js
 var import_jsx_runtime = require_jsx_runtime();
 function Privacy() {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(PublicLayout, {

@@ -1140,7 +1140,7 @@
   /* Body and thickness: a lit top edge, a shaded bottom one. Unfiltered, so it
      stays the colour it was written as. */
   .nl-glass-tint {
-    background: color-mix(in oklab, var(--color-bg) 66%, transparent);
+    background: color-mix(in oklab, var(--color-bg) 52%, transparent);
     box-shadow:
       inset 0 1px 0 color-mix(in oklab, white 55%, transparent),
       inset 0 -1px 0 color-mix(in oklab, var(--color-fg) 8%, transparent),
@@ -1150,7 +1150,7 @@
   /* Dark schemes take less white: a bright sheen over dark ink reads as fog. */
   :root[data-scheme="night"] .nl-glass-tint,
   :root[data-scheme="ink"] .nl-glass-tint {
-    background: color-mix(in oklab, var(--color-bg) 66%, transparent);
+    background: color-mix(in oklab, var(--color-bg) 58%, transparent);
     box-shadow:
       inset 0 1px 0 color-mix(in oklab, white 16%, transparent),
       inset 0 -1px 0 color-mix(in oklab, black 22%, transparent),
