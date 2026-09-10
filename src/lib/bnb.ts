@@ -102,13 +102,24 @@ export function openLibraryCoverUrl(coverId: number, size: "S" | "M" | "L" = "M"
   return `${OPEN_LIBRARY_COVERS}/b/id/${coverId}-${size}.jpg`;
 }
 
-function useSameOriginProxy(): boolean {
+/**
+ * Should requests go through this app's same-origin proxy?
+ *
+ * True in the browser, where a direct cross-origin call would be blocked; false
+ * on the server, which can reach the upstream host itself.
+ *
+ * Named `shouldUseSameOriginProxy` rather than `useSameOriginProxy` on purpose:
+ * the `use` prefix made every lint pass read a plain predicate as a React hook
+ * and report a rules-of-hooks violation at each call site. The rule was right
+ * to complain — the name claimed something the function is not.
+ */
+function shouldUseSameOriginProxy(): boolean {
   return typeof window !== "undefined";
 }
 
 function openLibraryFetchUrl(term: string): string {
   const query = openLibrarySearchParams(term).toString();
-  return useSameOriginProxy()
+  return shouldUseSameOriginProxy()
     ? `/api/openlibrary/search.json?${query}`
     : openLibrarySearchUrl(term);
 }
@@ -116,7 +127,7 @@ function openLibraryFetchUrl(term: string): string {
 function workFetchUrl(workKey: string): string {
   const path = workKey.startsWith("/") ? workKey : `/${workKey}`;
   const jsonPath = path.endsWith(".json") ? path : `${path}.json`;
-  return useSameOriginProxy() ? `/api/openlibrary${jsonPath}` : `${OPEN_LIBRARY_ORIGIN}${jsonPath}`;
+  return shouldUseSameOriginProxy() ? `/api/openlibrary${jsonPath}` : `${OPEN_LIBRARY_ORIGIN}${jsonPath}`;
 }
 
 function bindingValue(row: Record<string, { value?: string } | undefined>, key: string): string {
@@ -226,7 +237,7 @@ async function searchOpenLibrary(term: string, signal?: AbortSignal): Promise<Bn
     const data = await fetchJson<{ docs?: OpenLibraryDoc[] }>(openLibraryFetchUrl(term), options);
     return fromOpenLibrary(data.docs ?? []);
   } catch (error) {
-    if (isAbortError(error) || !useSameOriginProxy()) throw error;
+    if (isAbortError(error) || !shouldUseSameOriginProxy()) throw error;
     const data = await fetchJson<{ docs?: OpenLibraryDoc[] }>(openLibrarySearchUrl(term), options);
     return fromOpenLibrary(data.docs ?? []);
   }

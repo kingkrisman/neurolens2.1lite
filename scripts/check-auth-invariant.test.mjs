@@ -26,6 +26,22 @@ function appEnvFetch(env) {
   });
 }
 
+const CAN_SYMLINK = (() => {
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "symlink-probe-"));
+    symlinkSync(dir, join(dir, "link"), "dir");
+    return true;
+  } catch {
+    return false;
+  }
+})();
+// Creating a directory symlink on Windows needs elevation, so an unprivileged
+// machine cannot set up this test's precondition. That is the environment
+// declining, not the CLI failing, so it skips rather than reporting a false red.
+const SKIP_SYMLINK = CAN_SYMLINK
+  ? undefined
+  : { skip: "symlinks need elevation on this platform" };
+
 test("the flag predicate matches src/lib/auth", () => {
   assert.equal(authEnabledFromEnvValue("false"), false);
   assert.equal(authEnabledFromEnvValue("true"), true);
@@ -95,7 +111,7 @@ test("the build side resolves the template's shipped app-env", () => {
   assert.equal(buildAuthEnabled(projectRoot(), { VITE_AUTH_ENABLED: "true" }), true);
 });
 
-test("the CLI reports rather than silently passing when run via a symlink", async () => {
+test("the CLI reports rather than silently passing when run via a symlink", SKIP_SYMLINK, async () => {
   // A check whose exit code is the whole signal must never no-op to 0 because
   // process.argv[1] came in through a symlinked path.
   const link = join(mkdtempSync(join(tmpdir(), "auth-invariant-link-")), "scripts");

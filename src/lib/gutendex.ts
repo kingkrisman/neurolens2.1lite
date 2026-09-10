@@ -41,14 +41,25 @@ export interface GutendexList {
   source: "gutendex" | "fallback";
 }
 
-function useSameOriginProxy(): boolean {
+/**
+ * Should requests go through this app's same-origin proxy?
+ *
+ * True in the browser, where a direct cross-origin call would be blocked; false
+ * on the server, which can reach the upstream host itself.
+ *
+ * Named `shouldUseSameOriginProxy` rather than `useSameOriginProxy` on purpose:
+ * the `use` prefix made every lint pass read a plain predicate as a React hook
+ * and report a rules-of-hooks violation at each call site. The rule was right
+ * to complain — the name claimed something the function is not.
+ */
+function shouldUseSameOriginProxy(): boolean {
   return typeof window !== "undefined";
 }
 
 export function gutendexBooksUrl(params: URLSearchParams): string {
   const query = params.toString();
   const path = query ? `books?${query}` : "books";
-  return useSameOriginProxy() ? `/api/gutendex/${path}` : `${GUTENDEX_ORIGIN}/${path}`;
+  return shouldUseSameOriginProxy() ? `/api/gutendex/${path}` : `${GUTENDEX_ORIGIN}/${path}`;
 }
 
 export function gutendexSearchParams(term: string): URLSearchParams {
@@ -67,7 +78,7 @@ export function rewriteGutendexNext(next: string | null): string | null {
     const url = new URL(next);
     if (url.hostname !== "gutendex.com" && url.hostname !== "www.gutendex.com") return null;
     const path = `${url.pathname.replace(/^\//, "").replace(/\/$/, "")}${url.search}`;
-    return useSameOriginProxy() ? `/api/gutendex/${path}` : next;
+    return shouldUseSameOriginProxy() ? `/api/gutendex/${path}` : next;
   } catch {
     return null;
   }
@@ -100,7 +111,7 @@ export function isAllowedGutenbergUrl(value: string | null | undefined): boolean
 }
 
 export function gutenbergFetchUrl(target: string): string {
-  return useSameOriginProxy() ? `/api/gutenberg?url=${encodeURIComponent(target)}` : target;
+  return shouldUseSameOriginProxy() ? `/api/gutenberg?url=${encodeURIComponent(target)}` : target;
 }
 
 const START_MARK = /\*\*\*\s*START OF (THE |THIS )?PROJECT GUTENBERG EBOOK[\s\S]*?\*\*\*/i;

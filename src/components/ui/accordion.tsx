@@ -34,7 +34,7 @@ export function AccordionTrigger({
         {children}
         <ChevronRight
           size={16}
-          className="shrink-0 text-muted transition-transform duration-[200ms] ease-[var(--ease-in-out)] group-data-[state=open]:rotate-90"
+          className="shrink-0 text-muted transition-transform duration-[200ms] ease-[var(--ease-in-out)] group-data-[state=open]:rotate-90 icon-motion icon-shift"
         />
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>
@@ -48,7 +48,7 @@ export function AccordionContent({
 }: ComponentProps<typeof AccordionPrimitive.Content>) {
   return (
     <AccordionPrimitive.Content
-      className="overflow-hidden data-[state=closed]:animate-[accordion-close_150ms_var(--ease-out)] data-[state=open]:animate-[accordion-open_200ms_var(--ease-out)] motion-reduce:data-[state=closed]:animate-[overlay-out_120ms_ease] motion-reduce:data-[state=open]:animate-[overlay-in_160ms_ease]"
+      className="overflow-hidden data-[state=closed]:animate-[accordion-close_250ms_var(--ease-out)] data-[state=open]:animate-[accordion-open_250ms_var(--ease-out)] motion-reduce:data-[state=closed]:animate-[overlay-out_120ms_ease] motion-reduce:data-[state=open]:animate-[overlay-in_160ms_ease]"
       {...props}
     >
       <div className={cn("max-w-2xl pb-5 text-sm leading-relaxed text-muted", className)}>

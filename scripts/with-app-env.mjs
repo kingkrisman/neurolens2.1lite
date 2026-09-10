@@ -20,7 +20,7 @@
  * `process.env`, which is why the merge has to happen before Vite starts.
  */
 import { spawn } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { constants as osConstants } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -104,6 +104,44 @@ export function isMainModule(moduleUrl) {
   }
 }
 
+/**
+ * Point Windows at something it can actually spawn.
+ *
+ * npm installs `vite.cmd` in `node_modules/.bin`, but `spawn` without a shell
+ * does no PATHEXT lookup — a bare `vite` is ENOENT — and Node refuses to spawn
+ * a `.cmd` directly (EINVAL) since the batch-argument hardening. So every
+ * script routed through this wrapper died on Windows before it started.
+ *
+ * Running the package's own JS entry under this Node avoids both problems and,
+ * unlike `shell: true`, keeps arguments away from cmd.exe's parsing.
+ */
+function resolveCommand(command, args) {
+  if (process.platform !== "win32" || command.includes("/") || command.includes("\\")) {
+    return { command, args };
+  }
+  try {
+    const manifest = join(projectRoot(), "node_modules", command, "package.json");
+    if (existsSync(manifest)) {
+      const { bin } = JSON.parse(readFileSync(manifest, "utf8"));
+      const entry = typeof bin === "string" ? bin : bin?.[command];
+      if (entry) {
+        return {
+          command: process.execPath,
+          args: [join(projectRoot(), "node_modules", command, entry), ...args],
+        };
+      }
+    }
+  } catch {
+    // Fall through to the shim below rather than failing on a malformed
+    // manifest — the shim still works for anything with simple arguments.
+  }
+  for (const ext of [".exe", ".cmd", ".bat"]) {
+    const shim = join(projectRoot(), "node_modules", ".bin", command + ext);
+    if (existsSync(shim)) return { command: shim, args, shell: ext !== ".exe" };
+  }
+  return { command, args };
+}
+
 function main(argv) {
   const [command, ...args] = argv;
   if (!command) {
@@ -111,7 +149,8 @@ function main(argv) {
     process.exit(2);
   }
   const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  const child = spawn(command, args, { stdio: "inherit", env });
+  const run = resolveCommand(command, args);
+  const child = spawn(run.command, run.args, { stdio: "inherit", env, shell: run.shell ?? false });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

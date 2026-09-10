@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode } from "react";
 import { Toaster } from "sonner";
-import { Search } from "lucide-react";
-import { Link } from "@tanstack/react-router";
-import { TABS } from "@/lib/types";
+import { Icon } from "@iconify/react";
+import { magnifyingGlass } from "@/lib/ph-icons";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { TABS, type TabId } from "@/lib/types";
 import { isDarkScheme } from "@/lib/scheme";
 import { CVD_LABELS } from "@/lib/color-vision";
 import { useAppStore } from "@/lib/store";
@@ -12,6 +13,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Landing } from "@/components/landing";
 import { Mark } from "@/components/mark";
 import { Segmented } from "@/components/segmented";
+import { NavMenu } from "@/components/nav-menu";
+import { GlassHeader } from "@/components/glass-header";
+import { Neuro } from "@/components/neuro";
+import { MotionCues } from "@/components/motion-cues";
+import { OfflineReady } from "@/components/offline-ready";
 import { LiveAnnouncer } from "@/components/live-announcer";
 import { FontLoader } from "@/components/font-loader";
 import { LensLoader } from "@/components/ui/loader";
@@ -74,6 +80,20 @@ const CommandPalette = lazy(async () => {
 const HAS_SCROLL_TIMELINE =
   typeof CSS !== "undefined" && CSS.supports("animation-timeline: scroll()");
 
+/**
+ * Flag whether the active pane has moved off its top.
+ *
+ * The header carries no seam until something is actually behind it — an edge
+ * that appears on first scroll and dissolves on the way back. Guarded so the
+ * attribute is only touched when the boolean flips, not on every frame.
+ */
+let lastScrolled = false;
+function markScrolled(scrolled: boolean) {
+  if (scrolled === lastScrolled) return;
+  lastScrolled = scrolled;
+  document.documentElement.dataset.scrolled = scrolled ? "true" : "false";
+}
+
 function Pane({
   children,
   className,
@@ -90,9 +110,13 @@ function Pane({
       ref={ref}
       className={cn("pane-scroll h-full overflow-y-auto", className)}
       onScroll={() => {
-        if (HAS_SCROLL_TIMELINE) return;
         const node = ref.current;
-        if (!node || !onProgress) return;
+        if (!node) return;
+        // Written to the DOM rather than React state: this fires on every
+        // scroll frame and the header only needs the boolean.
+        markScrolled(node.scrollTop > 4);
+        if (HAS_SCROLL_TIMELINE) return;
+        if (!onProgress) return;
         const remaining = node.scrollHeight - node.clientHeight;
         onProgress(remaining > 1 ? Math.min(1, node.scrollTop / remaining) : 1);
       }}
@@ -119,13 +143,67 @@ export function AppShell() {
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const theme = useAppStore((s) => s.profile.theme);
   const dimChrome = useAppStore((s) => s.profile.dimChrome);
+  const motionCues = useAppStore((s) => s.profile.motionCues);
   const cvdPreview = useAppStore((s) => s.cvdPreview);
   const setCvdPreview = useAppStore((s) => s.setCvdPreview);
   const progressRef = useRef(0);
+  const navigate = useNavigate();
+  const urlView = useSearch({ from: "/", select: (search) => search.view });
+
+  /**
+   * Keep the URL and the store's tab in step, in both directions.
+   *
+   * This has to be one effect, not two. Two effects run in the same commit and
+   * each sees the other's value pre-update: the URL->store one queues setTab
+   * while the store->URL one still reads the old tab and navigates straight
+   * back, so a deep link ping-pongs forever. `lastSynced` records the value the
+   * two sides last agreed on, which is enough to tell which one actually moved
+   * and therefore which one to follow.
+   *
+   * Store->URL is driven off `tab` rather than off setTab because some moves
+   * (startReading) change the tab from inside the store, and those deserve a
+   * history entry too. It pushes, so Back returns to the previous view instead
+   * of leaving the app.
+   */
+  // Seeded from the store, not the URL: on a deep link the URL is the side that
+  // has moved away from the store's default, and seeding it from the URL would
+  // make both sides look agreed so the default would win and overwrite the link.
+  const lastSynced = useRef<TabId>(tab);
+  useEffect(() => {
+    // The query string is untrusted input, so it is re-checked here rather than
+    // trusting validateSearch alone: feeding an unknown id into setTab renders
+    // an app shell with no matching view inside it — chrome, and nothing else.
+    const raw = urlView;
+    const valid = typeof raw === "string" && TABS.some((item) => item.id === raw);
+    const url: TabId = valid ? (raw as TabId) : "explore";
+    if (raw !== undefined && !valid) {
+      // Drop the junk so the address bar stops advertising a broken link.
+      void navigate({ to: "/", search: {}, replace: true });
+      return;
+    }
+    if (url === tab) {
+      lastSynced.current = tab;
+      return;
+    }
+    if (url !== lastSynced.current) {
+      lastSynced.current = url;
+      setTab(url);
+      return;
+    }
+    lastSynced.current = tab;
+    void navigate({ to: "/", search: tab === "explore" ? {} : { view: tab } });
+  }, [tab, urlView, setTab, navigate]);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // Mirrored onto the document so the motion-cue rules can reach parallax and
+  // scroll-linked layers wherever they are, without every one of them having to
+  // subscribe to the profile.
+  useEffect(() => {
+    document.documentElement.dataset.motionCues = motionCues ? "true" : "false";
+  }, [motionCues]);
 
   useEffect(() => {
     const stopNav = (event: DragEvent) => {
@@ -148,6 +226,9 @@ export function AppShell() {
   useEffect(() => {
     progressRef.current = 0;
     document.documentElement.style.setProperty("--scroll-progress", "0");
+    // A new pane mounts at its top and fires no scroll event, so the seam has
+    // to be cleared here or it would linger from the previous tab.
+    markScrolled(false);
   }, [tab]);
 
   useEffect(() => {
@@ -184,20 +265,31 @@ export function AppShell() {
           Skip to content
         </a>
         <div className="grain" aria-hidden="true" />
-        <header className="nl-chrome-in material pointer-events-none absolute inset-x-0 top-0 z-40">
+        <header className="nl-chrome-in pointer-events-none absolute inset-x-0 top-0 z-40">
+          <GlassHeader>
           <div className="pointer-events-auto flex h-14 items-center gap-1.5 px-2 sm:h-16 sm:gap-2 sm:px-6">
             <button
               type="button"
               aria-label="NeuroLens home"
-              className="flex shrink-0 items-center gap-2.5 text-fg"
+              className="icon-group flex shrink-0 items-center gap-2.5 text-fg"
               onClick={() => setTab("explore")}
             >
-              <Mark className="size-7 text-fg" />
+              {/* Keyed on the tab so a switch remounts the mark and replays the
+                  dilation — the eye reacting to the view changing under it. */}
+              <Mark key={tab} detail className="size-9 text-fg sm:size-10" />
               <span className="hidden text-sm font-medium tracking-tight sm:inline">NeuroLens</span>
             </button>
+            {/* Below `lg` the segmented control does not fit, so navigation
+                moves into the menu button and the header states where you are. */}
+            <p
+              key={tab}
+              className="nl-title-swap min-w-0 flex-1 truncate text-sm font-medium tracking-tight lg:hidden"
+            >
+              {TABS.find((item) => item.id === tab)?.label ?? "Explore"}
+            </p>
             <nav
               aria-label="Primary"
-              className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="hidden min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] lg:block [&::-webkit-scrollbar]:hidden"
             >
               <Segmented
                 tone="nav"
@@ -207,6 +299,12 @@ export function AppShell() {
                   id: item.id,
                   label: item.label,
                   disabled: item.id === "read" && !text,
+                  // A greyed-out tab that does nothing when clicked teaches
+                  // nothing. Saying what is missing is the whole fix.
+                  disabledReason:
+                    item.id === "read" && !text
+                      ? "Open a book or paste some text first"
+                      : undefined,
                 }))}
                 className="mx-auto h-10 w-max max-w-full"
               />
@@ -228,29 +326,31 @@ export function AppShell() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="hidden sm:inline-flex"
+                  className="hidden lg:inline-flex"
                   onClick={() => setCommandOpen(true)}
                 >
-                  <Search size={14} />
+                  <Icon icon={magnifyingGlass} width={14} height={14} aria-hidden className="icon-motion icon-lift" />
                   Search
                   <Kbd>⌘K</Kbd>
                 </Button>
                 <Button
                   variant="outline"
                   size="icon-sm"
-                  className="sm:hidden"
+                  className="lg:hidden"
                   aria-label="Search"
                   onClick={() => setCommandOpen(true)}
                 >
-                  <Search size={16} />
+                  <Icon icon={magnifyingGlass} width={16} height={16} aria-hidden className="icon-motion icon-lift" />
                 </Button>
               </>
             )}
+            <NavMenu />
           </div>
+          </GlassHeader>
           <div aria-hidden className="scroll-progress pointer-events-none h-0.5 bg-fg/35" />
           <div
             aria-hidden
-            className="pointer-events-none h-6 bg-gradient-to-b from-bg/80 to-transparent"
+            className="nl-scroll-edge pointer-events-none h-6 bg-gradient-to-b from-bg/80 to-transparent"
           />
         </header>
 
@@ -279,7 +379,7 @@ export function AppShell() {
               <Pane onProgress={setProgress}>
                 <TabErrorBoundary slot="library">
                   <Suspense fallback={<TabFallback />}>
-                    <Library />
+                    <Library className="icon-motion icon-lift" />
                   </Suspense>
                 </TabErrorBoundary>
               </Pane>
@@ -305,9 +405,11 @@ export function AppShell() {
           </div>
         </main>
 
+        {/* On mobile the footer sits directly above the TabBar, so it collapses
+            to a single compact row — the tagline goes, the legal links stay. */}
         {reading ? null : (
-          <footer className="nl-footer-in flex min-h-12 shrink-0 flex-col items-center justify-center gap-2 px-4 py-3 text-center text-xs text-muted sm:flex-row sm:gap-4">
-            <span>NeuroLens · Crafted for neurodivergent minds</span>
+          <footer className="nl-footer-in flex shrink-0 flex-row items-center justify-center gap-3 px-4 py-2 text-center text-xs text-muted sm:min-h-12 sm:gap-4 sm:py-3">
+            <span className="hidden sm:inline">NeuroLens · Crafted for neurodivergent minds</span>
             <span className="hidden opacity-40 sm:inline" aria-hidden>
               ·
             </span>
@@ -321,8 +423,11 @@ export function AppShell() {
             </nav>
           </footer>
         )}
+        <MotionCues />
+        <Neuro />
         <LiveAnnouncer />
         <FontLoader />
+        <OfflineReady />
         <Suspense fallback={null}>
           <CommandPalette />
         </Suspense>

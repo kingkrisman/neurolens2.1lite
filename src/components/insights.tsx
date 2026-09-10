@@ -8,16 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Media, Panel, PanelHeader, PanelWell } from "@/components/ui/surfaces";
 import { evaluateScheme, formatContrastRatio, bestContrastTheme } from "@/lib/contrast";
 import { PatternPanel } from "@/components/pattern-panel";
+import { AdaptivePanel } from "@/components/adaptive-panel";
 import { PATTERN_META } from "@/lib/reading-patterns";
 import { SAMPLE_TEXTS } from "@/lib/samples";
-import { wordCount } from "@/lib/utils";
+import { cn, wordCount } from "@/lib/utils";
 import { PageEnter, GsapStagger, ScrollScene } from "@/components/gsap-motion";
 import {
   average,
   buildSuggestions,
   formatDuration,
+  weeklyReading,
+  weekOverWeek,
   type InsightKind,
 } from "@/lib/insights";
+import type { Session } from "@/lib/types";
 
 export function Insights() {
   const sessions = useAppStore((s) => s.sessions);
@@ -32,7 +36,18 @@ export function Insights() {
   const profile = useAppStore((s) => s.profile);
   const setProfile = useAppStore((s) => s.setProfile);
 
-  const words = sessions.reduce((sum, session) => sum + wordCount(session.content), 0);
+  // Counted once per sessions change, then read by both the total and the
+  // history rows. wordCount splits the whole string and sessions hold entire
+  // books, so doing this inline walked megabytes on every unrelated render.
+  const wordsBySession = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const session of sessions) map.set(session.openedAt, wordCount(session.content));
+    return map;
+  }, [sessions]);
+  const words = useMemo(
+    () => [...wordsBySession.values()].reduce((sum, n) => sum + n, 0),
+    [wordsBySession],
+  );
   const sessionCount = sessions.length;
   const progressPct = Math.round(reading.progress * 100);
   const focusScore = Math.max(0, 100 - reading.pauses.length * 12 - reading.rereads.length * 8);
@@ -153,7 +168,19 @@ export function Insights() {
             <div className="absolute inset-0 flex flex-col justify-end p-5 text-primary-fg sm:p-8">
               <p className="text-xs tracking-wide text-primary-fg/70 uppercase">Session score</p>
               <p className="mt-1 font-serif text-6xl tracking-tight tabular-nums">
-                {quality == null ? "—" : <NumberFlow value={quality} />}
+                {quality == null ? (
+                  <>
+                    {/* Dimmed so the placeholder reads as "not measured yet"
+                        rather than a value that failed to load. Same size, so
+                        the block does not shift once a score arrives. */}
+                    <span aria-hidden className="text-primary-fg/35">
+                      —
+                    </span>
+                    <span className="sr-only">No score yet</span>
+                  </>
+                ) : (
+                  <NumberFlow value={quality} />
+                )}
               </p>
               <p className="mt-2 max-w-sm text-sm text-primary-fg/75">{insight}</p>
             </div>
@@ -165,9 +192,19 @@ export function Insights() {
         <PatternPanel />
       </div>
 
+      <div data-enter>
+        <AdaptivePanel />
+      </div>
+
+      <div data-enter className="mt-4">
+        <AdaptiveLearning />
+      </div>
+
       {suggestions.length > 0 ? (
-        <section data-enter className="mt-4">
-          <h2 className="mb-3 text-lg font-medium">What to try</h2>
+        <section data-enter className="mt-10">
+          <h2 className="mb-3 text-xs font-medium tracking-wide text-muted uppercase">
+            What to try
+          </h2>
           <GsapStagger className="grid gap-3 md:grid-cols-3">
             {suggestions.map((item) => (
               <Panel key={item.id}>
@@ -183,7 +220,18 @@ export function Insights() {
         </section>
       ) : null}
 
-      <GsapStagger className="mt-4 grid gap-3 md:grid-cols-3">
+      {/* Section labels, because everything below the score was nine panels of
+          identical weight with no reading order. The score answers "how did
+          this sitting go"; these answer "how do I read", which is a different
+          question and belongs under its own heading. */}
+      {/* Not "This sitting" — the pattern panel above already uses that phrase
+          as its own kicker, and two identical labels on one page tell the eye
+          they mark the same thing. These three cards are about pace. */}
+      <h2 data-enter className="mt-10 mb-3 text-xs font-medium tracking-wide text-muted uppercase">
+        Pace and focus
+      </h2>
+
+      <GsapStagger className="grid gap-3 md:grid-cols-3">
         <Panel>
           <PanelWell className="bg-primary px-5 py-5 text-primary-fg">
             <p className="text-xs font-medium tracking-wide uppercase opacity-70">
@@ -210,7 +258,11 @@ export function Insights() {
         />
       </GsapStagger>
 
-      <GsapStagger className="mt-3 grid gap-3 md:grid-cols-3">
+      <h2 data-enter className="mt-10 mb-3 text-xs font-medium tracking-wide text-muted uppercase">
+        All time
+      </h2>
+
+      <GsapStagger className="grid gap-3 md:grid-cols-3">
         <StatCard
           label="Words processed"
           value={words}
@@ -231,7 +283,10 @@ export function Insights() {
 
       {sessions.length > 0 ? (
         <section className="mt-10 pb-8">
-          <h2 className="mb-4 text-lg font-medium">History</h2>
+          <h2 className="mb-4 flex items-baseline gap-2 text-xs font-medium tracking-wide text-muted uppercase">
+            History
+            <span className="text-subtle tabular-nums normal-case">{sessions.length}</span>
+          </h2>
           <div className="grid gap-3 md:grid-cols-2" data-batch-children>
             {sessions.map((session) => (
               <button
@@ -252,7 +307,7 @@ export function Insights() {
                     <span className="mt-1 block text-xs text-muted">
                       {new Date(session.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       {" · "}
-                      {wordCount(session.content)} words
+                      {wordsBySession.get(session.openedAt) ?? 0} words
                       {session.progress != null ? ` · ${Math.round(session.progress * 100)}%` : ""}
                       {session.currentWpm ? ` · ${session.currentWpm} WPM` : ""}
                       {session.elapsedMs ? ` · ${formatDuration(session.elapsedMs)}` : ""}
@@ -265,7 +320,7 @@ export function Insights() {
                     Resume
                     <ChevronRight
                       size={14}
-                      className="transition-transform duration-[150ms] ease-[var(--ease-out)] group-hover:translate-x-0.5"
+                      className="icon-motion icon-shift"
                     />
                   </span>
                 </span>
@@ -278,6 +333,140 @@ export function Insights() {
       )}
       </ScrollScene>
     </PageEnter>
+  );
+}
+
+const LEVER_LABEL: Record<string, string> = {
+  "contrast-low": "Higher contrast",
+  rereading: "More line spacing",
+  "type-size": "Larger type",
+  pauses: "Larger type after pauses",
+  "pace-strain": "Slower target pace",
+  "strong-performance": "Faster target pace",
+};
+
+/**
+ * What the engine has worked out, in plain terms.
+ *
+ * The adaptive engine keeps a trust weight per lever and moves it according to
+ * whether a change actually reduced strain for this reader. None of that was
+ * visible anywhere, which is a poor bargain: the app asks people to accept
+ * suggestions about their own attention, and gave no account of where those
+ * suggestions came from or whether they had worked. Showing the weights makes
+ * the thing legible rather than magical — and makes it arguable, which matters
+ * more, because a reader who can see the engine was wrong can overrule it.
+ */
+/**
+ * Reading by week.
+ *
+ * The page could say how one sitting went and what the lifetime totals were,
+ * and nothing in between — so there was no way to see whether a habit was
+ * forming or lapsing, which is the thing most worth knowing. Empty weeks are
+ * drawn rather than skipped, because a gap is the honest part of the picture.
+ */
+function WeeklyTrend({ sessions }: { sessions: Session[] }) {
+  const series = useMemo(() => weeklyReading(sessions, 8), [sessions]);
+  const change = weekOverWeek(series);
+  const peak = Math.max(1, ...series.map((week) => week.words));
+  const read = series.some((week) => week.words > 0);
+
+  return (
+    <Panel>
+      <PanelHeader
+        title="Last eight weeks"
+        description={
+          !read
+            ? "Nothing logged yet. Weeks fill in as you read."
+            : change == null
+              ? "Words read each week."
+              : `Words read each week. This week is ${
+                  change >= 0 ? "up" : "down"
+                } ${Math.abs(Math.round(change * 100))}% on last.`
+        }
+      />
+      <PanelWell className="px-5 pt-2 pb-5">
+        <div className="flex h-24 items-end gap-1.5">
+          {series.map((week) => {
+            const height = week.words === 0 ? 2 : Math.max(4, (week.words / peak) * 100);
+            const label = new Date(week.weekStart).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            });
+            return (
+              <div
+                key={week.weekStart}
+                className="group flex min-w-0 flex-1 flex-col justify-end"
+                title={`Week of ${label} · ${week.words.toLocaleString()} words`}
+              >
+                <div
+                  className="rounded-t-xs bg-fg/25 transition-[height,background-color] duration-[400ms] ease-[var(--ease-out)] group-hover:bg-fg/45"
+                  style={{ height: `${height}%` }}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex justify-between text-xs text-subtle">
+          <span>
+            {new Date(series[0]!.weekStart).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })}
+          </span>
+          <span>This week</span>
+        </div>
+      </PanelWell>
+    </Panel>
+  );
+}
+
+function AdaptiveLearning() {
+  const memory = useAppStore((s) => s.adaptiveMemory);
+  const mode = useAppStore((s) => s.mode);
+
+  const learned = Object.entries(memory)
+    .filter(([, lever]) => lever && lever.uses > 0)
+    .sort((a, b) => (b[1]?.trust ?? 0) - (a[1]?.trust ?? 0));
+
+  if (mode !== "adaptive" && learned.length === 0) return null;
+
+  return (
+    <Panel>
+      <PanelHeader
+        title="What NeuroLens has learned"
+        description={
+          learned.length === 0
+            ? "Nothing yet. Accept or dismiss a suggestion and its effect gets measured on the next stretch of reading."
+            : "Each change is scored by whether your rereads and pauses actually fell afterwards. Ones that help get offered sooner."
+        }
+      />
+      {learned.length > 0 ? (
+        <PanelWell className="space-y-2.5 px-5 pb-5">
+          {learned.map(([rule, lever]) => {
+            const trust = lever?.trust ?? 1;
+            // 0.25–1.5 is the range trust can occupy, mapped to a bar.
+            const pct = Math.round(((trust - 0.25) / 1.25) * 100);
+            const verdict = trust > 1.05 ? "helping" : trust < 0.85 ? "not helping" : "no clear effect";
+            return (
+              <div key={rule}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm font-medium">{LEVER_LABEL[rule] ?? rule}</span>
+                  <span className="text-xs text-muted">
+                    {verdict} · tried {lever?.uses}×
+                  </span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-fg/8">
+                  <div
+                    className="h-full rounded-full bg-fg/45 transition-[width] duration-[400ms] ease-[var(--ease-out)]"
+                    style={{ width: `${Math.max(4, Math.min(100, pct))}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </PanelWell>
+      ) : null}
+    </Panel>
   );
 }
 

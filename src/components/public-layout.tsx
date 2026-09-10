@@ -25,8 +25,8 @@ export function PublicLayout({
       <div className="grain" aria-hidden />
       <header className="material sticky top-0 z-40">
         <div className="flex h-16 items-center justify-between px-5 sm:px-8">
-          <Link to="/" aria-label="NeuroLens home" className="flex items-center gap-2.5">
-            <Mark className="size-7 text-fg" />
+          <Link to="/" aria-label="NeuroLens home" className="icon-group flex items-center gap-2.5">
+            <Mark detail className="size-9 text-fg sm:size-10" />
             <span className="text-sm font-medium">NeuroLens</span>
           </Link>
           <Link to="/" className="text-sm font-medium hover:opacity-70">

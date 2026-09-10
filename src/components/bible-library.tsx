@@ -314,7 +314,7 @@ export function BibleLibrary() {
                 }}
               >
                 Open in reader
-                <ChevronRight size={16} />
+                <ChevronRight size={16} className="icon-motion icon-shift" />
               </Button>
             </div>
           </Panel>

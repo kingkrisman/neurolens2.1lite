@@ -1,6 +1,16 @@
 import { useRef } from "react";
 import { useReducedMotion } from "@/lib/prefers-reduced-motion";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
+
+/**
+ * Anything that draws itself at a given size.
+ *
+ * Was typed to `LucideIcon`, which locked the component to one icon library.
+ * The reader now draws its chrome from Phosphor data via `@iconify/react`, and
+ * those are perfectly good icons that simply are not Lucide components — the
+ * only thing this actually needs is something it can render with a size.
+ */
+export type SwappableIcon = ComponentType<{ size?: number; className?: string }>;
 import { gsap, registerGsap, useGSAP } from "@/lib/gsap";
 
 registerGsap();
@@ -12,8 +22,8 @@ export function IconSwap({
   size = 16,
 }: {
   active: boolean;
-  ActiveIcon: LucideIcon;
-  InactiveIcon: LucideIcon;
+  ActiveIcon: SwappableIcon;
+  InactiveIcon: SwappableIcon;
   size?: number;
 }) {
   const reduce = useReducedMotion();

@@ -40,7 +40,7 @@ function SchemeCard({
         <span className="mt-1 block truncate text-[11px] leading-relaxed text-muted">{scheme.line}</span>
         {selected ? (
           <span className="absolute top-2 right-2 flex size-5 items-center justify-center rounded-full bg-fg text-primary-fg">
-            <Check size={12} strokeWidth={2.5} />
+            <Check size={12} strokeWidth={2.5} className="icon-motion icon-lift" />
           </span>
         ) : null}
       </span>

@@ -1,4 +1,7 @@
-import { useState, useEffect, type MouseEvent } from "react";
+import { useState, useEffect, useMemo, useRef, type MouseEvent } from "react";
+import { useInView } from "@/lib/use-in-view";
+import { describePart, describeTimeLeft, positionOf, resumeTarget } from "@/lib/reading-position";
+import { useReducedMotion } from "@/lib/prefers-reduced-motion";
 import { toast } from "sonner";
 import { ChevronRight } from "lucide-react";
 import { processBionicText } from "@/lib/bionic";
@@ -82,11 +85,86 @@ function FirstStart() {
 
 export function Landing() {
   const startReading = useAppStore((s) => s.startReading);
+  const sessions = useAppStore((s) => s.sessions);
   const [input, setInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const [meta, setMeta] = useState<{ title: string; format: string; wordCount: number; readTime: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const targetWpm = useAppStore((s) => s.targetWpm);
+
+  /**
+   * The book to offer, if there is one worth offering.
+   *
+   * Deliberately picky. A session opened and abandoned inside a few seconds is
+   * not something anyone wants to be shown on their next visit, and a book
+   * already finished is worse — being invited to continue something you
+   * completed reads as the app not having noticed.
+   */
+  const resumable = useMemo(() => {
+    // Something actually started and not yet finished. A session abandoned in
+    // the first seconds is not worth offering back, and being invited to
+    // continue a book you completed reads as the app not having noticed.
+    const latest = sessions.find(
+      (item) => ((item.progress ?? 0) > 0.01 || (item.section ?? 0) > 1) && item.content.trim(),
+    );
+    if (!latest) return null;
+    const position = positionOf(latest, targetWpm);
+    if (position.finished) return null;
+
+    // Describe the destination, not the last known position — the two differ
+    // for a part the reader finished without turning the page, and a button
+    // that names one place and opens another is worse than no button.
+    const target = resumeTarget(position);
+    const position2 = positionOf({ ...latest, section: target.part, progress: target.within }, targetWpm);
+    const detail = [describePart(position2), describeTimeLeft(position2)]
+      .filter(Boolean)
+      .join(" · ");
+    return { session: latest, detail, target };
+  }, [sessions, targetWpm]);
+
   const [demoBionic, setDemoBionic] = useState(true);
+  // Once the visitor works the toggle themselves, the demo stops driving it.
+  // Something that keeps moving after you have taken hold of it is a fight,
+  // not a demonstration.
+  const [demoTaken, setDemoTaken] = useState(false);
+  const demoRef = useRef<HTMLDivElement>(null);
+  const demoInView = useInView(demoRef, { once: false, rootMargin: "0px" });
+  const reduceMotion = useReducedMotion();
+
+  /**
+   * Let the fixation preview demonstrate itself.
+   *
+   * This card carries the whole idea of the product and it sat still until
+   * somebody clicked it, which meant the one thing worth watching on the page
+   * never moved. Cycling it turns the hero from a description of adaptive
+   * formatting into a showing of it.
+   *
+   * Deliberately slow. At four seconds a pass the change registers as the text
+   * re-setting itself rather than as a flicker demanding attention — which
+   * matters more than usual for the readers this is built for. It runs only
+   * while the card is actually on screen, stops for good once the visitor takes
+   * the control, and never starts under reduced motion.
+   */
+  useEffect(() => {
+    if (demoTaken || reduceMotion || !demoInView) return;
+    const timer = window.setInterval(() => setDemoBionic((on) => !on), 4000);
+    return () => window.clearInterval(timer);
+  }, [demoTaken, reduceMotion, demoInView]);
+  // The floating mobile CTA is a stand-in for the hero button. While the real
+  // one is on screen it is pure duplication — and it sat on top of the preview
+  // card — so it only rides in once the hero button has scrolled away.
+  const [heroCtaGone, setHeroCtaGone] = useState(false);
+
+  useEffect(() => {
+    const cta = document.getElementById("hero-cta");
+    if (!cta || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeroCtaGone(!entry?.isIntersecting),
+      { rootMargin: "-8px 0px 0px 0px" },
+    );
+    observer.observe(cta);
+    return () => observer.disconnect();
+  }, []);
 
   async function onUpload(file: File | undefined) {
     if (!file) return;
@@ -122,35 +200,98 @@ export function Landing() {
   return (
     <div className="flex min-h-full flex-col pb-24 sm:pb-16" onClick={onInPageNav}>
       <ParallaxHero>
-        <div className="mx-auto flex min-h-[min(92vh,56rem)] max-w-6xl flex-col justify-end gap-10 px-4 pt-[5.5rem] pb-10 sm:px-6 sm:pt-28 sm:pb-14 lg:flex-row lg:items-end lg:gap-12">
-          <div className="min-w-0 flex-1">
+        {/* Full-bleed: no max-width cage, so the hero spans the viewport and the
+            artwork behind it is framed by the copy rather than by a centred
+            column floating in it. Padding scales with the viewport instead, so
+            the text still stops short of the edge on a wide display.
+            `flex-1` on the copy column only applies in the lg row layout — in
+            the stacked layout it grew to eat the container's min-height and
+            opened a dead gap between the buttons and the preview card. */}
+        <div className="flex min-h-[min(78vh,44rem)] w-full flex-col justify-end gap-8 px-5 pt-[5.5rem] pb-10 sm:min-h-[min(84vh,50rem)] sm:gap-10 sm:px-10 sm:pt-28 sm:pb-14 lg:min-h-[min(92vh,56rem)] lg:flex-row lg:items-end lg:gap-16 lg:px-14 xl:px-20">
+          <div className="min-w-0 lg:flex-1">
             <StaggerBlock>
               <p className="mb-4 font-serif text-base text-accent italic">Adaptive reading</p>
             </StaggerBlock>
             <HeroTitle />
-            <StaggerBlock delay={160} className="mt-5 max-w-md text-base leading-relaxed text-muted sm:text-lg">
+            <StaggerBlock delay={160} className="mt-5 max-w-prose text-base leading-relaxed text-pretty text-muted sm:text-lg">
               Formatting that follows your attention. Less visual friction, stronger fixation, a calmer page.
             </StaggerBlock>
             <StaggerBlock delay={220} className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button asChild className="min-w-44 pl-4 pr-3.5">
-                <a href="#reader-start">
-                  Start reading
-                  <ChevronRight size={16} />
-                </a>
-              </Button>
-              <Button asChild variant="outline" className="min-w-44 bg-surface/80">
-                <a href="#how-it-works">See how it works</a>
-              </Button>
+              {resumable ? (
+                <>
+                  {/* The primary action, in the place the primary action was
+                      already. A returning reader should not be shown a pitch —
+                      and should not have to cross the Library and pick out of a
+                      list to reach the thing they were part way through.
+                      Starting is the hardest part; this is the whole feature. */}
+                  <Button
+                    // `h-auto` because the base Button is a fixed-height,
+                    // nowrap row and this one carries two lines. The width cap
+                    // is what keeps a book with a long title from stretching
+                    // the button across the hero.
+                    className="h-auto min-h-11 w-full max-w-full py-2 pl-4 pr-3 text-left sm:w-auto sm:max-w-80"
+                    onClick={() => {
+                      startReading(resumable.session.content, {
+                        title: resumable.session.title,
+                        kind: resumable.session.kind,
+                        sourceId: resumable.session.sourceId,
+                        // Both coordinates. `progress` is a scroll fraction of
+                        // one section, so it needs the section to mean anything
+                        // — sending it alone reopened Part 1 while the button
+                        // said Part 2, the kind of small lie that costs a reader
+                        // their place and their trust in the number.
+                        ...(resumable.session.kind === "pdf"
+                          ? { pdfPage: resumable.target.part }
+                          : { chapter: resumable.target.part }),
+                        progress: resumable.target.within,
+                      });
+                    }}
+                  >
+                    {/* `min-w-0` on the column and `w-full` on each line are
+                        both required for truncation: without them the text sets
+                        the flex basis and overflows instead of clipping. */}
+                    <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                      <span className="w-full truncate">Continue · {resumable.session.title}</span>
+                      {resumable.detail ? (
+                        <span className="w-full truncate text-xs font-normal opacity-75">
+                          {resumable.detail}
+                        </span>
+                      ) : null}
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 icon-motion icon-shift" />
+                  </Button>
+                  <Button asChild variant="outline" className="min-w-44 bg-surface/80">
+                    <a id="hero-cta" href="#reader-start">
+                      Start something new
+                    </a>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button asChild className="min-w-44 pl-4 pr-3.5">
+                    <a id="hero-cta" href="#reader-start">
+                      Start reading
+                      <ChevronRight size={16} className="icon-motion icon-shift" />
+                    </a>
+                  </Button>
+                  <Button asChild variant="outline" className="min-w-44 bg-surface/80">
+                    <a href="#how-it-works">See how it works</a>
+                  </Button>
+                </>
+              )}
             </StaggerBlock>
           </div>
 
-          <div className="relative w-full min-w-0 pb-4 lg:w-[42%] lg:shrink-0 lg:pb-0">
+          <div ref={demoRef} className="relative w-full min-w-0 pb-4 lg:w-[38%] lg:max-w-xl lg:shrink-0 lg:pb-0">
             <Card className="material-surface overflow-hidden p-4 sm:p-5">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <span className="font-serif text-sm text-accent italic">Fixation</span>
                 <Segmented
                   value={demoBionic ? "bionic" : "standard"}
-                  onChange={(id) => setDemoBionic(id === "bionic")}
+                  onChange={(id) => {
+                    setDemoTaken(true);
+                    setDemoBionic(id === "bionic");
+                  }}
                   label="Fixation preview"
                   options={[
                     { id: "bionic", label: "Bionic" },
@@ -160,7 +301,10 @@ export function Landing() {
                 />
               </div>
               <StaggerBlock delay={80}>
-              <p className="text-left text-sm leading-relaxed sm:text-base">
+              <p
+                key={demoBionic ? "bionic" : "standard"}
+                className="nl-demo-swap text-left text-sm leading-relaxed sm:text-base"
+              >
                 {demoBionic ? (
                   <AccessibleBionic text={DEMO_SENTENCE} html={processBionicText(DEMO_SENTENCE, 0.55, true)} />
                 ) : (
@@ -249,7 +393,7 @@ export function Landing() {
             }
           >
             Open in reader
-            <ChevronRight size={16} />
+            <ChevronRight size={16} className="icon-motion icon-shift" />
           </Button>
           {error && (
             <p id="upload-error" role="alert" className="mt-3 text-xs text-danger">
@@ -284,7 +428,7 @@ export function Landing() {
                 </span>
                 <ChevronRight
                   size={14}
-                  className="mt-1 shrink-0 text-subtle transition-transform duration-[150ms] ease-[var(--ease-out)] group-hover:translate-x-0.5"
+                  className="mt-1 shrink-0 text-subtle icon-motion icon-shift"
                 />
               </button>
             ))}
@@ -381,7 +525,7 @@ export function Landing() {
                 A calmer layout made intimidating research blocks approachable in shorter sessions.
               </p>
               <a href="#reader-start" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-accent">
-                Try it <ChevronRight size={14} />
+                Try it <ChevronRight size={14} className="icon-motion icon-shift" />
               </a>
             </div>
           </Card>
@@ -482,12 +626,18 @@ export function Landing() {
 
       <a
         href="#reader-start"
+        aria-hidden={!heroCtaGone}
+        tabIndex={heroCtaGone ? undefined : -1}
         className={cn(
-          "fixed right-4 bottom-20 z-40 inline-flex h-12 items-center gap-1 rounded-lg bg-primary px-4 pr-3.5 text-sm font-medium text-primary-fg shadow-float sm:hidden",
-          "active:scale-[0.97] transition-transform duration-[140ms] ease-[var(--ease-out)]",
+          // Clears the footer row below it.
+          "fixed right-4 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 inline-flex h-12 items-center gap-1 rounded-lg bg-primary px-4 pr-3.5 text-sm font-medium text-primary-fg shadow-float sm:hidden",
+          "transition-[opacity,transform] duration-[250ms] ease-[var(--ease-out)] active:scale-[0.97] motion-reduce:transition-none",
+          heroCtaGone
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-3 opacity-0",
         )}
       >
-        Start reading <ChevronRight size={16} />
+        Start reading <ChevronRight size={16} className="icon-motion icon-shift" />
       </a>
     </div>
   );

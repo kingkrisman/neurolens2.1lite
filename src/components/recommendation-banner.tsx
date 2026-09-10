@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "@/lib/prefers-reduced-motion";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
-import { tapFeedback } from "@/lib/feedback";
+import { feedback, tapFeedback } from "@/lib/feedback";
 import { Button } from "@/components/ui/button";
 import { easeOut, gsap, registerGsap, useGSAP } from "@/lib/gsap";
 
@@ -126,7 +126,9 @@ export function RecommendationBanner() {
           onClick={() => {
             applyRecommendation();
             setWhyOpen(false);
-            tapFeedback("adapt");
+            feedback("adapt", {
+              message: "Suggestion applied",
+            });
             toast.success("Recommendation applied", {
               action: {
                 label: "Undo",

@@ -6,7 +6,10 @@ import { cn } from "@/lib/utils";
 const tapScale = "active:not-disabled:scale-[0.97]";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium outline-none select-none disabled:pointer-events-none disabled:opacity-40 transition-[transform,background-color,box-shadow,color,opacity] duration-[140ms] ease-[var(--ease-out)] focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-fg)_18%,transparent)]",
+  // `icon-group` is the trigger for the .icon-motion utilities. It is a
+  // dedicated class rather than Tailwind's `group` so it cannot capture
+  // `group-hover:` bindings that already point at an outer card.
+  "icon-group inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium outline-none select-none disabled:pointer-events-none disabled:opacity-40 transition-[transform,background-color,box-shadow,color,opacity] duration-[140ms] ease-[var(--ease-out)] focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-fg)_18%,transparent)]",
   {
     variants: {
       variant: {

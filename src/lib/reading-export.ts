@@ -145,3 +145,51 @@ export function downloadReading(
   link.click();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Render marked passages as Markdown.
+ *
+ * Markdown rather than the styled HTML the reading export produces, because
+ * these are going somewhere else — a notes app, an essay, a citation — and a
+ * document carrying this app's type settings would be fighting whatever it
+ * lands in. Notes are quoted under their passage so the pairing survives the
+ * trip.
+ */
+/** Collapse a passage onto one line, so a blockquote stays a blockquote. */
+function flatten(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function highlightsToMarkdown(
+  groups: { title: string; marks: { text: string; note?: string; section: number }[] }[],
+): string {
+  const lines: string[] = ["# Highlights", ""];
+
+  for (const group of groups) {
+    if (!group.marks.length) continue;
+    lines.push(`## ${group.title}`, "");
+    for (const mark of group.marks) {
+      lines.push(`> ${flatten(mark.text)}`);
+      if (mark.note) lines.push("", flatten(mark.note));
+      lines.push("");
+    }
+  }
+
+  const total = groups.reduce((sum, group) => sum + group.marks.length, 0);
+  lines.push("---", `${total} passage${total === 1 ? "" : "s"} from NeuroLens.`, "");
+  return lines.join("\n");
+}
+
+/** Save the marked passages as a .md file. */
+export function downloadHighlights(
+  groups: { title: string; marks: { text: string; note?: string; section: number }[] }[],
+): void {
+  const markdown = highlightsToMarkdown(groups);
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "neurolens-highlights.md";
+  link.click();
+  URL.revokeObjectURL(url);
+}

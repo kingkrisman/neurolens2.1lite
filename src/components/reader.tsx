@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Pause,
   Play,
+  Search,
   Settings2,
   SpellCheck,
   StickyNote,
@@ -27,12 +28,12 @@ import { applyPlainLanguage, simplifyText } from "@/lib/text-simplifier";
 import { evaluateScheme, formatContrastRatio } from "@/lib/contrast";
 import { FONT_CLASS, TINT_CLASS } from "@/lib/types";
 import { useAppStore } from "@/lib/store";
-import { tapFeedback } from "@/lib/feedback";
+import { feedback, tapFeedback } from "@/lib/feedback";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/field";
+import { Textarea, Input } from "@/components/ui/field";
 import { IconSwap } from "@/components/ui/icon-swap";
-import { Progress } from "@/components/ui/surfaces";
+import { Progress, Kbd } from "@/components/ui/surfaces";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet } from "@/components/ui/sheet";
 import {
@@ -56,7 +57,32 @@ import { ReadingCoach } from "@/components/reading-coach";
 import { ReconnectDock } from "@/components/reconnect-card";
 import { PdfPageCanvas, ReaderPager } from "@/components/pdf-pager";
 import { splitPdfPages, joinPdfPages } from "@/lib/pdf-pages";
-import { detectChapters, joinTextChapters, splitTextChapters } from "@/lib/chapters";
+import { detectChapters, joinTextChapters, paginateLongText, splitTextChapters } from "@/lib/chapters";
+import { searchBook } from "@/lib/book-search";
+import { exportHighlights } from "@/lib/data-export";
+import {
+  customHighlightsSupported,
+  ensureHighlightStyle,
+  rangeFromOffsets,
+  readSelection,
+} from "@/lib/selection-range";
+import { Icon } from "@iconify/react";
+import {
+  bookmarkSimple,
+  caretRight,
+  bookmarkSimpleFill,
+  compass,
+  crosshair,
+  dotsThree,
+  highlighter as phHighlighter,
+  magnifyingGlass,
+  pause as phPause,
+  play as phPlay,
+  slidersHorizontal,
+  speakerHigh,
+  translate,
+  x as phX,
+} from "@/lib/ph-icons";
 import { chapterRole, isTitlePage, parseBlocks } from "@/lib/blocks";
 import { WordRun } from "@/components/word-run";
 import { WordCard } from "@/components/word-card";
@@ -80,6 +106,17 @@ function afterMenu(fn: () => void) {
   }, 0);
 }
 
+/** IconSwap takes components, so the Phosphor data is wrapped to match. */
+const PhPause = (props: { size?: number; className?: string }) => (
+  <Icon icon={phPause} width={props.size ?? 19} height={props.size ?? 19} aria-hidden className={props.className} />
+);
+const PhPlay = (props: { size?: number; className?: string }) => (
+  <Icon icon={phPlay} width={props.size ?? 19} height={props.size ?? 19} aria-hidden className={props.className} />
+);
+const PhSpeaker = (props: { size?: number; className?: string }) => (
+  <Icon icon={speakerHigh} width={props.size ?? 19} height={props.size ?? 19} aria-hidden className={props.className} />
+);
+
 export function Reader() {
   const text = useAppStore((s) => s.text);
   const sourceKind = useAppStore((s) => s.sourceKind);
@@ -98,7 +135,12 @@ export function Reader() {
   const setAutoScrolling = useAppStore((s) => s.setAutoScrolling);
   const targetWpm = useAppStore((s) => s.targetWpm);
   const highlights = useAppStore((s) => s.highlights);
-  const toggleHighlight = useAppStore((s) => s.toggleHighlight);
+  const elapsedActiveMs = useAppStore((s) => s.reading.elapsedActiveMs);
+  const addHighlight = useAppStore((s) => s.addHighlight);
+  const removeHighlight = useAppStore((s) => s.removeHighlight);
+  const annotateHighlight = useAppStore((s) => s.annotateHighlight);
+  const pendingJump = useAppStore((s) => s.pendingJump);
+  const clearJump = useAppStore((s) => s.clearJump);
   const toggleBookmark = useAppStore((s) => s.toggleBookmark);
   const bookmarks = useAppStore((s) => s.bookmarks);
   const sourceId = useAppStore((s) => s.sourceId);
@@ -111,6 +153,20 @@ export function Reader() {
   const [isPaused, setIsPaused] = useState(false);
   const [rsvpOpen, setRsvpOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [marksOpen, setMarksOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  /**
+   * Touch targets, then mouse targets.
+   *
+   * The dock's controls were 36px squares. That is under the 44px minimum for a
+   * touch target, and this app is used by people who often have motor as well
+   * as attention differences — a control you cannot reliably hit is not a
+   * control. Nine of them across a 390px phone also left no room to grow, which
+   * is why the secondary four move into the overflow menu below `sm` rather
+   * than being shrunk further.
+   */
+  const dockButton = "size-11 min-h-11 sm:size-9 sm:min-h-9";
+  const [findQuery, setFindQuery] = useState("");
   const [note, setNote] = useState("");
   const [simplifyOpen, setSimplifyOpen] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
@@ -135,10 +191,13 @@ export function Reader() {
     () => (sourceKind === "pdf" ? splitPdfPages(text) : []),
     [sourceKind, text],
   );
-  const textChapters = useMemo(
-    () => (sourceKind === "text" ? splitTextChapters(text) : []),
-    [sourceKind, text],
-  );
+  const textChapters = useMemo(() => {
+    if (sourceKind !== "text") return [];
+    const declared = splitTextChapters(text);
+    // A long book whose headings this parser cannot see would otherwise render
+    // in full — every paragraph of it — in a single pass.
+    return declared.length > 0 ? declared : paginateLongText(text);
+  }, [sourceKind, text]);
   const pdfChapters = useMemo(
     () => (sourceKind === "pdf" ? detectChapters(pdfPages) : []),
     [sourceKind, pdfPages],
@@ -332,7 +391,11 @@ export function Reader() {
   }, []);
 
   useEffect(() => {
-    pendingRestore.current = useAppStore.getState().reading.progress;
+    // Taken once, and taken away — the placement effect below runs on every
+    // part change, and a restore point left lying around would drag the reader
+    // back into the middle of the next part they turned to.
+    pendingRestore.current = useAppStore.getState().restoreTo;
+    if (pendingRestore.current) useAppStore.setState({ restoreTo: 0 });
   }, [text]);
 
   useLayoutEffect(() => {
@@ -361,12 +424,27 @@ export function Reader() {
       } else node.dispatchEvent(new Event("nl-line"));
     };
     if (restore > 0.02 && restore < 0.98) {
-      requestAnimationFrame(() => {
+      // Wait for the text to have a height before restoring a fraction of it.
+      // On a cold open the article has not laid out on the first frame, so a
+      // single attempt measured zero, silently skipped, and cleared the pending
+      // value — dropping the reader at the top of the right part instead of
+      // where they stopped. Bounded, so a genuinely short part gives up rather
+      // than spinning.
+      let frames = 0;
+      const restoreScroll = () => {
         const max = node.scrollHeight - node.clientHeight;
-        if (max > 8) node.scrollTop = restore * max;
+        if (max <= 8) {
+          if (frames++ < 30) {
+            requestAnimationFrame(restoreScroll);
+            return;
+          }
+        } else {
+          node.scrollTop = restore * max;
+        }
         pendingRestore.current = 0;
         requestAnimationFrame(place);
-      });
+      };
+      requestAnimationFrame(restoreScroll);
     } else {
       node.scrollTop = 0;
       requestAnimationFrame(place);
@@ -410,6 +488,19 @@ export function Reader() {
     };
   }, [viewText, isSpeaking, profile.wordGuide, lines.length, markActiveLine]);
 
+  // Cmd/Ctrl-F is what everyone reaches for, so it opens the in-book find
+  // rather than the browser's — which would only search the section on screen
+  // and quietly miss the rest of the book.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "f") return;
+      event.preventDefault();
+      setFindOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     if (!paged && !chaptered) return;
     const onKey = (event: KeyboardEvent) => {
@@ -438,7 +529,213 @@ export function Reader() {
   const simplified = useMemo(() => simplifyText(viewText), [viewText]);
   const checkpoints = useMemo(() => buildCheckpoints(viewText), [viewText]);
   const markKey = text.trim().slice(0, 48) || "default";
-  const marked = highlights[markKey] ?? [];
+  /**
+   * Which slice of the book the reader is looking at.
+   *
+   * Line indices restart inside every chapter, Part, and PDF page, so a
+   * highlight is only located once it is paired with the section it was made
+   * in. Without this, marking a line lit up the same index in every other
+   * section of the book.
+   */
+  const section = paged ? pdfPage : chaptered ? chapterIndex : 0;
+  // Memoised so the fallback does not mint a fresh [] on every render, which
+  // would invalidate the Set below each time and re-derive it for nothing.
+  /**
+   * The book as the reader navigates it, for searching across the whole thing.
+   *
+   * Search has to look beyond the section on screen — the point of it is to
+   * find the passage you cannot see — so it works from every section's text and
+   * reports matches in the same section/line terms the reader jumps by.
+   */
+  /** Move the reader to a section/line pair, changing section first if needed. */
+  const jumpTo = useCallback(
+    (toSection: number, lineIdx: number) => {
+      const here = toSection === section;
+      if (!here) {
+        if (paged) setPdfPage(toSection);
+        else if (chaptered) setChapter(toSection);
+      }
+      // A line only exists in the DOM once its section is rendered, so a
+      // cross-section jump has to wait for that commit before scrolling.
+      window.setTimeout(
+        () => {
+          const node = scrollRef.current?.querySelector(`#line-${lineIdx}`);
+          node?.scrollIntoView({ block: "center", behavior: "smooth" });
+          if (node instanceof HTMLElement) markActiveLine(lineIdx);
+        },
+        here ? 60 : 320,
+      );
+    },
+    [section, paged, chaptered, setPdfPage, setChapter, markActiveLine],
+  );
+
+  // Satisfy a jump asked for from elsewhere (the command palette). Waits for
+  // `lines` so the target section has actually rendered — jumping before that
+  // would scroll to an id that does not exist yet.
+  useEffect(() => {
+    if (!pendingJump || !lines.length) return;
+    const { section: to, lineIdx } = pendingJump;
+    clearJump();
+    jumpTo(to, lineIdx);
+  }, [pendingJump, lines.length, clearJump, jumpTo]);
+
+  const searchSections = useMemo(() => {
+    if (paged) return pdfPages;
+    if (chaptered) return textChapters.map((chapter) => chapter.body);
+    return [text];
+  }, [paged, pdfPages, chaptered, textChapters, text]);
+
+  const findHits = useMemo(
+    () => (findOpen && findQuery.trim().length > 1 ? searchBook(searchSections, findQuery) : []),
+    [findOpen, findQuery, searchSections],
+  );
+
+  const bookHighlights = useMemo(() => highlights[markKey] ?? [], [highlights, markKey]);
+  /**
+   * Whether the reader has reached the end of this part, and what to say.
+   *
+   * Only for a book that actually has parts — an undivided passage has no
+   * boundary to mark, and inventing one would be a celebration of nothing.
+   */
+  const partDone = useMemo(() => {
+    if (!chaptered && !paged) return null;
+    const words = viewText.trim() ? viewText.trim().split(/\s+/).length : 0;
+    if (!words) return null;
+
+    const minutes = Math.max(1, Math.round(elapsedActiveMs / 60_000));
+    const markCount = bookHighlights.filter((h) => h.section === section).length;
+    const summary = [
+      `${words.toLocaleString()} words`,
+      `${minutes} min`,
+      markCount ? `${markCount} highlight${markCount === 1 ? "" : "s"}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    const total = paged ? pageCount : chapterCount;
+    const at = paged ? pdfPage : chapterIndex;
+    const hasNext = at < total;
+    const next = hasNext
+      ? (chapters[at]?.title ?? (paged ? `Page ${at + 1}` : `Part ${at + 1}`))
+      : null;
+
+    return { summary, next };
+  }, [
+    chaptered,
+    paged,
+    viewText,
+    elapsedActiveMs,
+    bookHighlights,
+    section,
+    pageCount,
+    chapterCount,
+    pdfPage,
+    chapterIndex,
+    chapters,
+  ]);
+
+  /** Marks that belong to the section currently on screen. */
+  const marksHere = useMemo(
+    () => bookHighlights.filter((h) => h.section === section),
+    [bookHighlights, section],
+  );
+
+  /**
+   * Paint saved marks as ranges over the live text.
+   *
+   * The CSS Custom Highlight API is the right tool and the only clean one: a
+   * mark can start mid-word and end mid-word, and the line underneath is
+   * already a nest of elements because bionic formatting wraps the lead of
+   * every word. Splicing `<mark>` into that would mean rebuilding the markup on
+   * every change and fighting React for it. Ranges sit *over* the DOM instead
+   * and never touch it.
+   *
+   * Re-runs on font and spacing changes as well as on the marks themselves,
+   * because a reflow moves the text the ranges are pinned to.
+   */
+  useEffect(() => {
+    if (!customHighlightsSupported()) return;
+    const node = scrollRef.current;
+    if (!node) return;
+    // Re-run on every paint so a scheme change is reflected; replacing the one
+    // rule is cheaper than watching the theme separately.
+    ensureHighlightStyle();
+
+    const ranges: Range[] = [];
+    for (const mark of marksHere) {
+      const line = node.querySelector(`#line-${mark.lineIdx}`);
+      if (!line) continue;
+      const range = rangeFromOffsets(line, mark.start, mark.end);
+      if (range) ranges.push(range);
+    }
+
+    const registry = (CSS as unknown as { highlights: Map<string, unknown> }).highlights;
+    if (!ranges.length) {
+      registry.delete("nl-mark");
+      return;
+    }
+    registry.set("nl-mark", new (window as unknown as { Highlight: new (...r: Range[]) => unknown }).Highlight(...ranges));
+    return () => {
+      registry.delete("nl-mark");
+    };
+  }, [marksHere, viewText, profile.fontSize, profile.lineHeight, profile.bionicStrength, profile.fontFamily, profile.theme]);
+
+  /**
+   * Mark whatever was dragged over.
+   *
+   * On `pointerup` rather than on `selectionchange`, because a selection is
+   * still growing while the pointer is down and marking mid-drag would leave a
+   * trail of half-phrases. Keyboard selection is covered too: Shift+Arrow ends
+   * on a keyup, and someone selecting by keyboard is often someone who cannot
+   * comfortably drag.
+   *
+   * The selection is deliberately left in place afterwards, so the same drag
+   * can still be copied. Marking and copying are both reasonable things to want
+   * from having selected a phrase, and clearing it would silently rule one out.
+   */
+  const markSelection = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node || isSpeaking) return;
+    const picked = readSelection(node);
+    if (!picked) return;
+
+    addHighlight({
+      lineIdx: picked.lineIdx,
+      section,
+      start: picked.start,
+      end: picked.end,
+      text: picked.text,
+    });
+    feedback("good", { message: `Highlighted: ${picked.text.slice(0, 60)}` });
+    // The selection is cleared after marking, not kept. Leaving it in place
+    // meant the browser's own selection sat on top of the stroke that had just
+    // been drawn, so the reader could not see the mark they had made until they
+    // clicked elsewhere — the one moment the feedback actually matters.
+    window.getSelection?.()?.removeAllRanges();
+  }, [isSpeaking, section, addHighlight]);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const onUp = () => {
+      // Deferred a frame: on pointerup the browser has not always finished
+      // settling the selection, and reading it too early gives the range as it
+      // stood one event earlier.
+      window.setTimeout(markSelection, 0);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (!event.shiftKey) return;
+      if (!event.key.startsWith("Arrow")) return;
+      window.setTimeout(markSelection, 0);
+    };
+    node.addEventListener("pointerup", onUp);
+    node.addEventListener("keyup", onKeyUp);
+    return () => {
+      node.removeEventListener("pointerup", onUp);
+      node.removeEventListener("keyup", onKeyUp);
+    };
+  }, [markSelection]);
+
   const bookmarked = bookmarks.some((item) =>
     sourceId ? item.sourceId === sourceId : item.content === text,
   );
@@ -580,7 +877,15 @@ export function Reader() {
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
-          className="reader-scroll h-full overflow-y-auto"
+          className={cn(
+            "reader-scroll h-full overflow-y-auto",
+            // The options panel is a 24rem drawer down the left. Shifting the
+            // column out from under it is what makes the panel useful: you are
+            // adjusting type against text you can still see, not text the panel
+            // is sitting on. Only from `lg`, where there is width to give up.
+            "transition-[padding] duration-[250ms] ease-[var(--ease-out)] motion-reduce:transition-none",
+            controlsOpen && "lg:pl-[24rem]",
+          )}
           data-resume={resumeLine ?? undefined}
         >
           <article
@@ -641,7 +946,6 @@ export function Reader() {
                     className={cn(
                       "reading-line cursor-pointer",
                       rhythmCurve !== "steady" && /[.!?…]["'”’)]*$/.test(line.text.trim()) && "rhythm-cadence",
-                      marked.includes(line.lineIdx) && "marked",
                       resumeLine === line.lineIdx && "is-resume",
                     )}
                     onClick={(event) => {
@@ -654,9 +958,12 @@ export function Reader() {
                         const word = wordFromPoint(event.clientX, event.clientY, event.currentTarget as HTMLElement);
                         if (word) setLookup(word);
                       }
-                      if (activeLineRef.current === line.lineIdx) {
-                        toggleHighlight(line.lineIdx);
-                      } else {
+                      // Marking is no longer a click. A click has no extent, so
+                      // it could only ever mark the whole sentence — which is
+                      // not what marking a passage means. Dragging says where it
+                      // starts and where it stops; see the selection handler on
+                      // the scroll container.
+                      {
                         markActiveLine(line.lineIdx);
                         const boxes = lineBoxesOf(event.currentTarget);
                         let boxIndex = 0;
@@ -739,6 +1046,51 @@ export function Reader() {
               </p>
             );
           })}
+
+          {/* The end of a Part, marked.
+              Reaching one used to pass in silence — the text simply stopped —
+              which threw away a completion the reader had actually earned and
+              the app had already computed. Dopamine follows closing a loop, and
+              a whole book is too far away to pull anyone; a Part is fifteen
+              minutes.
+
+              In the flow of the text, not a modal and not a toast. A modal at a
+              completion is friction at the exact moment somebody felt good, and
+              a toast is gone before it is read. This is a landing, not a gate:
+              Continue is right there, and closing the app is equally fine. */}
+          {partDone ? (
+            <div className="nl-part-done mt-10 rounded-lg bg-surface p-4 shadow-border sm:p-5">
+              <p className="text-sm font-medium">
+                {chaptered && chapters[chapterIndex - 1]?.title
+                  ? `${chapters[chapterIndex - 1]!.title} finished`
+                  : `Part ${section} finished`}
+              </p>
+              {/* What you did, not what you owe. No bar creeping toward a
+                  distant end, no score — the effort, reported back while it
+                  still feels like yours. */}
+              <p className="mt-1 text-sm text-muted tabular-nums">{partDone.summary}</p>
+              {partDone.next ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  {/* Anticipation rather than obligation: dopamine tracks the
+                      expectation more than the receipt, and a chapter title is
+                      a far better reason to go on than a number would be. */}
+                  <p className="text-sm text-muted">Next: {partDone.next}</p>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (paged) setPdfPage(pdfPage + 1);
+                      else setChapter(chapterIndex < 1 ? 2 : chapterIndex + 1);
+                    }}
+                  >
+                    Continue
+                    <Icon icon={caretRight} width={14} height={14} aria-hidden className="icon-motion icon-shift" />
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted">That was the last part.</p>
+              )}
+            </div>
+          ) : null}
         </article>
         </div>
       </div>
@@ -771,6 +1123,7 @@ export function Reader() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  className={cn(dockButton, "hidden sm:inline-flex")}
                   onClick={() =>
                     setProfile({
                       ...useAppStore.getState().profile,
@@ -780,23 +1133,24 @@ export function Reader() {
                   aria-label={profile.plainLanguage ? "Turn off plain words" : "Plain words"}
                   aria-pressed={Boolean(profile.plainLanguage)}
                 >
-                  <Languages size={16} />
+                  <Icon icon={translate} width={19} height={19} aria-hidden className="icon-motion icon-lift" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{profile.plainLanguage ? "Plain words on" : "Plain words"}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon-sm" onClick={() => setControlsOpen(true)} aria-label="Reading options">
-                  <Settings2 size={16} />
+                <Button variant="ghost" size="icon-sm" className={dockButton} onClick={() => setControlsOpen(true)} aria-label="Reading options">
+                  <Icon icon={slidersHorizontal} width={19} height={19} aria-hidden className="icon-motion icon-turn" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Options</TooltipContent>
             </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="Reading guides" aria-pressed={Boolean(profile.syllables || profile.letterGuide || profile.wordGuide || profile.plainLanguage)}>
-                  <Focus size={16} />
+                <Button variant="ghost" size="icon-sm"
+                  className={cn(dockButton, "hidden sm:inline-flex")} aria-label="Reading guides" aria-pressed={Boolean(profile.syllables || profile.letterGuide || profile.wordGuide || profile.plainLanguage)}>
+                  <Icon icon={crosshair} width={19} height={19} aria-hidden className="icon-motion icon-lift" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
@@ -808,7 +1162,7 @@ export function Reader() {
                     })
                   }
                 >
-                  <SpellCheck size={14} />
+                  <SpellCheck size={14} className="icon-motion icon-lift" />
                   {profile.syllables ? "Syllables on" : "Syllables"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -819,7 +1173,7 @@ export function Reader() {
                     })
                   }
                 >
-                  <BookOpenText size={14} />
+                  <BookOpenText size={14} className="icon-motion icon-lift" />
                   {profile.letterGuide ? "Letter guide on" : "Letter guide"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -830,7 +1184,7 @@ export function Reader() {
                     })
                   }
                 >
-                  <Highlighter size={14} />
+                  <Highlighter size={14} className="icon-motion icon-lift" />
                   {profile.wordGuide ? "Word highlight on" : "Word highlight"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -841,7 +1195,7 @@ export function Reader() {
                     })
                   }
                 >
-                  <Languages size={14} />
+                  <Languages size={14} className="icon-motion icon-lift" />
                   {profile.plainLanguage ? "Plain words on" : "Plain words"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -852,7 +1206,7 @@ export function Reader() {
                     })
                   }
                 >
-                  <BookOpenText size={14} />
+                  <BookOpenText size={14} className="icon-motion icon-lift" />
                   {profile.lookup !== false ? "Definitions on" : "Tap for definition"}
                 </DropdownMenuItem>
                 {isSpeaking ? (
@@ -866,7 +1220,7 @@ export function Reader() {
                       });
                     }}
                   >
-                    <VolumeX size={14} />
+                    <VolumeX size={14} className="icon-motion icon-lift" />
                     Stop listening
                   </DropdownMenuItem>
                 ) : null}
@@ -892,16 +1246,56 @@ export function Reader() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {/* Find and Highlights sit on the toolbar rather than in the
+                overflow menu. Both are reached mid-read and often, and the menu
+                had grown to nine items — long enough that scanning it costs
+                more than the trip saves. */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  className={dockButton}
+                  onClick={() => setFindOpen(true)}
+                  aria-label="Find in book"
+                >
+                  <Icon icon={magnifyingGlass} width={19} height={19} aria-hidden className="icon-motion icon-lift" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Find in book <Kbd>⌘F</Kbd>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={dockButton}
+                  onClick={() => setMarksOpen(true)}
+                  disabled={bookHighlights.length === 0}
+                  aria-label={`Highlights (${bookHighlights.length})`}
+                >
+                  <Icon icon={phHighlighter} width={19} height={19} aria-hidden className="icon-motion icon-lift" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {bookHighlights.length > 0
+                  ? `Highlights · ${bookHighlights.length}`
+                  : "No highlights yet"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(dockButton, "hidden sm:inline-flex")}
                   onClick={() => setReconnectOpen((value) => !value)}
                   aria-label="Where was I"
                   aria-pressed={reconnectOpen}
                 >
-                  <Compass size={16} />
+                  <Icon icon={compass} width={19} height={19} aria-hidden className="icon-motion icon-turn" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Where was I</TooltipContent>
@@ -911,6 +1305,7 @@ export function Reader() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  className={dockButton}
                   onClick={() => {
                     const was = bookmarked;
                     toggleBookmark();
@@ -919,7 +1314,13 @@ export function Reader() {
                   aria-label={bookmarked ? "Remove bookmark" : "Bookmark this place"}
                   aria-pressed={bookmarked}
                 >
-                  <Bookmark size={16} className={bookmarked ? "fill-current" : undefined} />
+                  <Icon
+                    icon={bookmarked ? bookmarkSimpleFill : bookmarkSimple}
+                    width={19}
+                    height={19}
+                    aria-hidden
+                    className="icon-motion icon-rise"
+                  />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{bookmarked ? "Remove bookmark" : "Save this place"}</TooltipContent>
@@ -929,14 +1330,15 @@ export function Reader() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  className={cn(dockButton, "hidden sm:inline-flex")}
                   onClick={toggleSpeech}
                   aria-label={isSpeaking && !isPaused ? "Pause listening" : isPaused ? "Resume listening" : "Listen"}
                   aria-pressed={isSpeaking}
                 >
                   <IconSwap
                     active={isSpeaking && !isPaused}
-                    ActiveIcon={Pause}
-                    InactiveIcon={isPaused ? Play : Volume2}
+                    ActiveIcon={PhPause}
+                    InactiveIcon={isPaused ? PhPlay : PhSpeaker}
                   />
                 </Button>
               </TooltipTrigger>
@@ -946,21 +1348,77 @@ export function Reader() {
             </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="More actions" aria-pressed={autoScrolling}>
-                  <MoreHorizontal size={16} />
+                <Button variant="ghost" size="icon-sm"
+                  className={dockButton} aria-label="More actions" aria-pressed={autoScrolling}>
+                  <Icon icon={dotsThree} width={19} height={19} aria-hidden className="icon-motion icon-lift" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* The four controls the dock hides below `sm` reappear here, so
+                    nothing is only reachable on a wide screen. */}
+                <DropdownMenuItem
+                  className="sm:hidden"
+                  onSelect={() => afterMenu(toggleSpeech)}
+                >
+                  <Icon icon={isSpeaking && !isPaused ? phPause : speakerHigh} width={14} height={14} aria-hidden className="icon-motion icon-lift" />
+                  {isSpeaking && !isPaused ? "Pause listening" : isPaused ? "Resume listening" : "Listen"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="sm:hidden"
+                  onSelect={() => afterMenu(() => setReconnectOpen((value) => !value))}
+                >
+                  <Icon icon={compass} width={14} height={14} aria-hidden className="icon-motion icon-turn" />
+                  Where was I
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="sm:hidden"
+                  onSelect={() =>
+                    afterMenu(() => {
+                      const current = useAppStore.getState().profile;
+                      setProfile({ ...current, plainLanguage: !current.plainLanguage });
+                    })
+                  }
+                >
+                  <Icon icon={translate} width={14} height={14} aria-hidden className="icon-motion icon-lift" />
+                  {profile.plainLanguage ? "Plain words on" : "Plain words"}
+                </DropdownMenuItem>
+                {/* Reading guides is a nested menu on wide screens; nesting it
+                    inside this one on a phone would be a menu in a menu, so its
+                    toggles are listed flat instead. */}
+                <DropdownMenuItem
+                  className="sm:hidden"
+                  onSelect={() =>
+                    afterMenu(() => {
+                      const current = useAppStore.getState().profile;
+                      setProfile({ ...current, wordGuide: !current.wordGuide });
+                    })
+                  }
+                >
+                  <Icon icon={crosshair} width={14} height={14} aria-hidden className="icon-motion icon-lift" />
+                  {profile.wordGuide ? "Word highlight on" : "Word highlight"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="sm:hidden"
+                  onSelect={() =>
+                    afterMenu(() => {
+                      const current = useAppStore.getState().profile;
+                      setProfile({ ...current, syllables: !current.syllables });
+                    })
+                  }
+                >
+                  <SpellCheck size={14} className="icon-motion icon-lift" />
+                  {profile.syllables ? "Syllables on" : "Syllables"}
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => afterMenu(toggleAutoScroll)}>
-                  <ChevronsDown size={14} />
+                  <ChevronsDown size={14} className="icon-motion icon-drop" />
                   {autoScrolling ? "Pause auto-scroll" : "Auto-scroll"}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => afterMenu(() => setRsvpOpen(true))}>
-                  <Play size={14} />
+                  <Play size={14} className="icon-motion icon-lift" />
                   Speed reader
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => afterMenu(() => setSimplifyOpen(true))}>
-                  <Languages size={14} />
+                  <Languages size={14} className="icon-motion icon-lift" />
                   Rewrite this page
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -972,11 +1430,11 @@ export function Reader() {
                   }
                   disabled={checkpoints.length === 0}
                 >
-                  <HelpCircle size={14} />
+                  <HelpCircle size={14} className="icon-motion icon-lift" />
                   Check understanding
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => afterMenu(() => setNoteOpen(true))}>
-                  <StickyNote size={14} />
+                  <StickyNote size={14} className="icon-motion icon-lift" />
                   Quick note
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -988,7 +1446,7 @@ export function Reader() {
                     })
                   }
                 >
-                  <Copy size={14} />
+                  <Copy size={14} className="icon-motion icon-lift" />
                   Copy text
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -1003,7 +1461,7 @@ export function Reader() {
                     })
                   }
                 >
-                  <Download size={14} />
+                  <Download size={14} className="icon-motion icon-drop" />
                   Download
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -1025,13 +1483,13 @@ export function Reader() {
             {chunkOn && chunks.length > 1 ? (
               <div className="mx-1 flex items-center gap-1 text-xs tabular-nums text-muted">
                 <Button variant="ghost" size="icon-sm" disabled={chunkIndex <= 0} onClick={() => setChunkIndex((i) => Math.max(0, i - 1))} aria-label="Previous chunk">
-                  <ChevronLeft size={16} />
+                  <ChevronLeft size={16} className="icon-motion icon-shift-back" />
                 </Button>
                 <span>
                   {chunkIndex + 1}/{chunks.length}
                 </span>
                 <Button variant="ghost" size="icon-sm" disabled={chunkIndex >= chunks.length - 1} onClick={() => setChunkIndex((i) => Math.min(chunks.length - 1, i + 1))} aria-label="Next chunk">
-                  <ChevronRight size={16} />
+                  <ChevronRight size={16} className="icon-motion icon-shift" />
                 </Button>
               </div>
             ) : null}
@@ -1141,6 +1599,141 @@ export function Reader() {
             >
               Score
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Highlights were write-only until now: they could be made, and never
+          read back. Listing them here is the other half of the feature, and it
+          is only possible because a highlight now carries its own text. */}
+      <Dialog open={findOpen} onOpenChange={setFindOpen}>
+        <DialogContent>
+          <DialogTitle className="mb-3 text-lg font-medium">Find in book</DialogTitle>
+          <DialogDescription className="sr-only">
+            Search every chapter of this book and jump to a result.
+          </DialogDescription>
+          <Input
+            autoFocus
+            value={findQuery}
+            onChange={(event) => setFindQuery(event.target.value)}
+            placeholder="Search this book…"
+            aria-label="Search this book"
+            className="mb-3"
+          />
+          <p className="mb-2 text-xs text-muted" role="status">
+            {findQuery.trim().length < 2
+              ? "Type at least two characters."
+              : findHits.length === 0
+                ? "No matches."
+                : `${findHits.length}${findHits.length === 200 ? "+" : ""} match${findHits.length === 1 ? "" : "es"}`}
+          </p>
+          <div className="max-h-[52vh] space-y-1.5 overflow-y-auto">
+            {findHits.map((hit) => (
+              <button
+                key={`${hit.section}:${hit.lineIdx}:${hit.start}`}
+                type="button"
+                className="icon-group flex w-full flex-col items-start gap-1 rounded-md bg-bg px-3 py-2.5 text-left shadow-border transition-[box-shadow,transform] duration-[150ms] ease-[var(--ease-out)] hover:shadow-border-hover active:scale-[0.99]"
+                onClick={() => {
+                  setFindOpen(false);
+                  jumpTo(hit.section, hit.lineIdx);
+                }}
+              >
+                <span className="line-clamp-2 text-sm leading-relaxed">
+                  {hit.text.slice(0, hit.start)}
+                  <mark className="rounded-xs bg-accent/25 text-fg">
+                    {hit.text.slice(hit.start, hit.end)}
+                  </mark>
+                  {hit.text.slice(hit.end)}
+                </span>
+                {searchSections.length > 1 ? (
+                  <span className="text-xs text-muted">
+                    {chapters[Math.max(0, hit.section - 1)]?.title ??
+                      (paged ? `Page ${hit.section}` : `Part ${hit.section}`)}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={marksOpen} onOpenChange={setMarksOpen}>
+        <DialogContent>
+          <DialogTitle className="mb-3 text-lg font-medium">Highlights</DialogTitle>
+          <DialogDescription className="mb-3 text-sm text-muted">
+            {bookHighlights.length} in {readingTitle}. Select one to jump to it.
+          </DialogDescription>
+          {bookHighlights.length > 0 ? (
+            <div className="mb-3 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Only this book: exporting a whole library from a panel
+                  // titled with one book's name would be a surprise. The
+                  // everything-file lives in Settings, where it reads as backup.
+                  exportHighlights({ [markKey]: bookHighlights }, () => readingTitle);
+                  feedback("good", { message: "Highlights exported" });
+                }}
+              >
+                Export as Markdown
+              </Button>
+            </div>
+          ) : null}
+          <div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
+            {[...bookHighlights]
+              .sort((a, b) => a.section - b.section || a.lineIdx - b.lineIdx || a.start - b.start)
+              .map((mark) => {
+
+                return (
+                  <div
+                    key={`${mark.section}:${mark.lineIdx}:${mark.start}`}
+                    className="relative rounded-md bg-bg px-3 py-2.5 shadow-border"
+                  >
+                    <button
+                      type="button"
+                      className="icon-group flex w-full flex-col items-start gap-1 text-left"
+                      onClick={() => {
+                        setMarksOpen(false);
+                        jumpTo(mark.section, mark.lineIdx);
+                      }}
+                    >
+                      <span className="line-clamp-3 pr-7 text-sm leading-relaxed">{mark.text}</span>
+                      <span className="text-xs text-muted">
+                        {chaptered || paged
+                          ? (chapters[Math.max(0, mark.section - 1)]?.title ??
+                            (paged ? `Page ${mark.section}` : `Part ${mark.section}`))
+                          : new Date(mark.at).toLocaleDateString()}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Remove highlight: ${mark.text.slice(0, 50)}`}
+                      className="icon-group absolute top-1.5 right-1.5 rounded-sm p-1.5 text-subtle transition-colors hover:bg-fg/6 hover:text-fg"
+                      onClick={() => {
+                        removeHighlight(mark.lineIdx, mark.section, mark.start);
+                        feedback("bad", { message: "Highlight removed" });
+                      }}
+                    >
+                      <Icon icon={phX} width={13} height={13} aria-hidden className="icon-motion icon-turn" />
+                    </button>
+                    {/* A note belongs to the passage, not to the session — the
+                        existing Quick note is one field for the whole sitting,
+                        which cannot say *which* sentence prompted the thought. */}
+                    <Textarea
+                      defaultValue={mark.note ?? ""}
+                      placeholder="Add a note…"
+                      aria-label={`Note on: ${mark.text.slice(0, 60)}`}
+                      rows={mark.note ? 2 : 1}
+                      onBlur={(event) => {
+                        if (event.target.value.trim() === (mark.note ?? "")) return;
+                        annotateHighlight(mark.lineIdx, mark.section, mark.start, event.target.value);
+                      }}
+                      className="mt-2 min-h-9 w-full resize-y rounded-sm bg-surface px-2 py-1.5 text-xs leading-relaxed"
+                    />
+                  </div>
+                );
+              })}
           </div>
         </DialogContent>
       </Dialog>

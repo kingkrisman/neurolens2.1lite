@@ -105,14 +105,14 @@ export function ReaderPager({
   return (
     <div className="flex items-center gap-0.5" role="navigation" aria-label={hasChapters ? "Chapters" : "Pages"}>
       <Button variant="ghost" size="icon-sm" onClick={prev} disabled={prevDisabled} aria-label={hasChapters ? "Previous chapter" : "Previous page"}>
-        <ChevronLeft size={16} />
+        <ChevronLeft size={16} className="icon-motion icon-shift-back" />
       </Button>
       {hasChapters ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-9 max-w-36 min-w-0 gap-1 px-2 text-xs font-medium">
               <span className="truncate">{label}</span>
-              <ChevronDown size={12} className="shrink-0 opacity-60" />
+              <ChevronDown size={12} className="shrink-0 opacity-60 icon-motion icon-drop" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="center" className="max-h-72 w-64 overflow-y-auto p-1">
@@ -125,7 +125,7 @@ export function ReaderPager({
                   className={cn("justify-between", active && "bg-fg/6")}
                 >
                   <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                  {active ? <Check size={14} className="shrink-0" /> : null}
+                  {active ? <Check size={14} className="shrink-0 icon-motion icon-lift" /> : null}
                 </DropdownMenuItem>
               );
             })}
@@ -135,7 +135,7 @@ export function ReaderPager({
         <p className="min-w-12 px-1 text-center text-xs tabular-nums text-muted">{label}</p>
       )}
       <Button variant="ghost" size="icon-sm" onClick={next} disabled={nextDisabled} aria-label={hasChapters ? "Next chapter" : "Next page"}>
-        <ChevronRight size={16} />
+        <ChevronRight size={16} className="icon-motion icon-shift" />
       </Button>
       {hasChapters && pageCount > 1 ? (
         <p className="hidden px-1 text-[11px] tabular-nums text-subtle sm:block">
