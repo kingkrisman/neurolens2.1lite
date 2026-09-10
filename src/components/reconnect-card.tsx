@@ -175,7 +175,7 @@ export function ReconnectDock({
       className="material-surface pointer-events-auto w-[min(28rem,calc(100vw-1.5rem))] rounded-lg p-3 shadow-float"
     >
       <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
-        <Compass size={14} aria-hidden />
+        <Compass size={14} aria-hidden className="icon-motion icon-turn" />
         Reconnect
       </p>
       <p className="mt-1 text-sm leading-relaxed">{openPrompt}</p>

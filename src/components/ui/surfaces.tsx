@@ -41,18 +41,29 @@ export function PanelHeader({
   title,
   description,
   className,
+  as: Heading = "h2",
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
   className?: string;
+  /**
+   * Heading level for the title.
+   *
+   * A panel is an `h2` on a page whose only other heading is the `h1` title.
+   * Once panels are gathered under group labels, those labels take `h2` and the
+   * panels have to step down — otherwise the page is a flat run of same-level
+   * headings and the grouping exists only visually, which is exactly the part
+   * a screen reader cannot see.
+   */
+  as?: "h2" | "h3";
 }) {
   return (
     <div className={cn("scroll-mt-20 px-3 pt-3 pb-3", className)}>
       {eyebrow ? (
         <p className="text-xs font-medium tracking-wide text-muted uppercase">{eyebrow}</p>
       ) : null}
-      <h2 className={cn("font-medium", eyebrow && "mt-1")}>{title}</h2>
+      <Heading className={cn("font-medium", eyebrow && "mt-1")}>{title}</Heading>
       {description ? <p className="mt-1.5 text-sm leading-relaxed text-muted">{description}</p> : null}
     </div>
   );
@@ -76,7 +87,7 @@ export function Badge({
 export function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-fg/8 motion-reduce:animate-none", className)}
+      className={cn("skeleton rounded-md", className)}
       {...props}
     />
   );

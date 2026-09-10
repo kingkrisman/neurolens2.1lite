@@ -43,10 +43,10 @@ export function WordCard({
         </div>
         <div className="flex gap-1">
           <Button variant="ghost" size="icon-sm" onClick={play} aria-label="Pronounce">
-            <Volume2 size={16} />
+            <Volume2 size={16} className="icon-motion icon-lift" />
           </Button>
           <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close definition">
-            <X size={16} />
+            <X size={16} className="icon-motion icon-turn" />
           </Button>
         </div>
       </div>

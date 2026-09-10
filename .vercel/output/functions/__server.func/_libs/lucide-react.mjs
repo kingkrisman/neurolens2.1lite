@@ -127,16 +127,6 @@ var BookOpen = createLucideIcon("book-open", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
-var Bookmark = createLucideIcon("bookmark", [["path", {
-	d: "m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z",
-	key: "1fy3hk"
-}]]);
-/**
-* @license lucide-react v0.510.0 - ISC
-*
-* This source code is licensed under the ISC license.
-* See the LICENSE file in the root directory of this source tree.
-*/
 var Check = createLucideIcon("check", [["path", {
 	d: "M20 6 9 17l-5-5",
 	key: "1gmf2c"
@@ -296,32 +286,6 @@ var Download = createLucideIcon("download", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
-var Ellipsis = createLucideIcon("ellipsis", [
-	["circle", {
-		cx: "12",
-		cy: "12",
-		r: "1",
-		key: "41hilf"
-	}],
-	["circle", {
-		cx: "19",
-		cy: "12",
-		r: "1",
-		key: "1wjl8i"
-	}],
-	["circle", {
-		cx: "5",
-		cy: "12",
-		r: "1",
-		key: "1pcz8c"
-	}]
-]);
-/**
-* @license lucide-react v0.510.0 - ISC
-*
-* This source code is licensed under the ISC license.
-* See the LICENSE file in the root directory of this source tree.
-*/
 var Eye = createLucideIcon("eye", [["path", {
 	d: "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0",
 	key: "1nclc0"
@@ -331,36 +295,6 @@ var Eye = createLucideIcon("eye", [["path", {
 	r: "3",
 	key: "1v7zrd"
 }]]);
-/**
-* @license lucide-react v0.510.0 - ISC
-*
-* This source code is licensed under the ISC license.
-* See the LICENSE file in the root directory of this source tree.
-*/
-var Focus = createLucideIcon("focus", [
-	["circle", {
-		cx: "12",
-		cy: "12",
-		r: "3",
-		key: "1v7zrd"
-	}],
-	["path", {
-		d: "M3 7V5a2 2 0 0 1 2-2h2",
-		key: "aa7l1z"
-	}],
-	["path", {
-		d: "M17 3h2a2 2 0 0 1 2 2v2",
-		key: "4qcy5o"
-	}],
-	["path", {
-		d: "M21 17v2a2 2 0 0 1-2 2h-2",
-		key: "6vwrx8"
-	}],
-	["path", {
-		d: "M7 21H5a2 2 0 0 1-2-2v-2",
-		key: "ioqczr"
-	}]
-]);
 /**
 * @license lucide-react v0.510.0 - ISC
 *
@@ -734,4 +668,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { ChevronDown as A, Copy as C, ChevronsDown as D, CircleAlert as E, Bookmark as M, BookOpen as N, ChevronRight as O, BookOpenText as P, Download as S, CircleHelp as T, Languages as _, TriangleAlert as a, Eye as b, Sparkles as c, Play as d, Pause as f, Library as g, LockOpen as h, Upload as i, Check as j, ChevronLeft as k, Settings2 as l, Lock as m, VolumeX as n, StickyNote as o, Maximize2 as p, Volume2 as r, SpellCheck as s, X as t, Search as u, Highlighter as v, Compass as w, Ellipsis as x, Focus as y };
+export { BookOpen as A, CircleHelp as C, ChevronLeft as D, ChevronRight as E, ChevronDown as O, Compass as S, ChevronsDown as T, Languages as _, TriangleAlert as a, Download as b, Sparkles as c, Play as d, Pause as f, Library as g, LockOpen as h, Upload as i, BookOpenText as j, Check as k, Settings2 as l, Lock as m, VolumeX as n, StickyNote as o, Maximize2 as p, Volume2 as r, SpellCheck as s, X as t, Search as u, Highlighter as v, CircleAlert as w, Copy as x, Eye as y };

@@ -9,6 +9,7 @@ import { FontPicker } from "@/components/font-picker";
 import { PanelScroller } from "@/components/panel-scroller";
 import { FIXATION_PRESETS, nearestFixationPreset } from "@/lib/bionic";
 import { cn } from "@/lib/utils";
+import { motionPermissionNeeded, requestMotionPermission } from "@/lib/device-motion";
 import { useState } from "react";
 
 const MODES: ReadingMode[] = ["default", "adhd", "dyslexia", "focus", "academic", "speed", "adaptive"];
@@ -27,12 +28,12 @@ function LockToggle({ setting }: { setting: LockableSetting }) {
   return (
     <button
       type="button"
-      className="shrink-0 text-subtle hover:text-fg"
+      className="icon-group shrink-0 text-subtle hover:text-fg"
       aria-label={locked ? "Unlock setting" : "Lock setting from Adaptive"}
       aria-pressed={locked}
       onClick={() => toggleLock(setting)}
     >
-      {locked ? <Lock size={13} /> : <Unlock size={13} />}
+      {locked ? <Lock size={13} className="icon-motion icon-lift" /> : <Unlock size={13} className="icon-motion icon-lift" />}
     </button>
   );
 }
@@ -81,10 +82,10 @@ export function ReaderControls({ onClose }: { onClose: () => void }) {
                 void Promise.resolve(next).catch(() => {});
               }}
             >
-              <Maximize2 size={16} />
+              <Maximize2 size={16} className="icon-motion icon-lift" />
             </Button>
             <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close options">
-              <X size={16} />
+              <X size={16} className="icon-motion icon-turn" />
             </Button>
           </div>
         </div>
@@ -106,7 +107,10 @@ export function ReaderControls({ onClose }: { onClose: () => void }) {
         <div className="space-y-8 pr-2 pb-8">
         <section id="rc-mode" className="rc-section">
           <p className="mb-3 text-xs font-medium tracking-wide text-muted uppercase">Mode</p>
-          <div className="flex flex-col gap-1.5">
+          {/* Two columns in the mobile bottom sheet: seven stacked rows pushed
+              everything below them off the sheet and made Mode feel like the
+              whole panel. The desktop drawer is too narrow for two. */}
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-1">
             {MODES.map((id) => (
               <button
                 key={id}
@@ -137,7 +141,7 @@ export function ReaderControls({ onClose }: { onClose: () => void }) {
 
         <section>
           <p className="mb-3 text-xs font-medium tracking-wide text-muted uppercase">Profiles</p>
-          <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-1">
             {NAMED_PRESETS.map((preset) => (
               <button
                 key={preset.id}
@@ -306,6 +310,20 @@ export function ReaderControls({ onClose }: { onClose: () => void }) {
             onChange={(checked) => setProfile({ ...profile, plainLanguage: checked })}
           />
           <ToggleRow
+            id="motion-cues"
+            label="Motion cues"
+            hint="Stops parallax and scroll drift, and anchors the page with a fixed horizon line. For motion sickness."
+            checked={Boolean(profile.motionCues)}
+            onChange={(checked) => {
+              setProfile({ ...profile, motionCues: checked });
+              // iOS will not deliver a single sample until it has been asked,
+              // and it will only allow the asking from inside a gesture — so
+              // the request has to happen here, on the tap, and nowhere else.
+              // Refusal is not an error: the cues fall back to scroll.
+              if (checked && motionPermissionNeeded()) void requestMotionPermission();
+            }}
+          />
+          <ToggleRow
             id="justify"
             label="Justify text"
             checked={profile.align === "justify"}
@@ -434,25 +452,40 @@ export function ReaderControls({ onClose }: { onClose: () => void }) {
 function ToggleRow({
   id,
   label,
+  hint,
   checked,
   onChange,
   lock,
 }: {
   id: string;
   label: string;
+  /** One line saying what the toggle does, for settings whose name is not enough. */
+  hint?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   lock?: LockableSetting;
 }) {
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 py-1">
-      <span className="inline-flex min-w-0 items-center gap-2">
-        <Label htmlFor={id} className="text-pretty">
-          {label}
-        </Label>
-        {lock ? <LockToggle setting={lock} /> : null}
+      <span className="inline-flex min-w-0 flex-col">
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <Label htmlFor={id} className="text-pretty">
+            {label}
+          </Label>
+          {lock ? <LockToggle setting={lock} /> : null}
+        </span>
+        {hint ? (
+          <span id={`${id}-hint`} className="mt-0.5 text-xs leading-snug text-pretty text-muted">
+            {hint}
+          </span>
+        ) : null}
       </span>
-      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-describedby={hint ? `${id}-hint` : undefined}
+      />
     </div>
   );
 }

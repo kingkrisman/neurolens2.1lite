@@ -22,7 +22,13 @@ export function HeroTitle() {
   );
 
   return (
-    <h1 ref={ref} className="max-w-lg text-4xl leading-[1.08] sm:text-5xl">
+    // Tracking is size-specific, so the display size is fluid rather than a
+    // pair of fixed steps: it grows with the viewport and the negative tracking
+    // in the base h1 rule keeps pace instead of only being right at one size.
+    <h1
+      ref={ref}
+      className="max-w-[18ch] text-[clamp(2.5rem,7vw,5.25rem)] leading-[1.04] lg:max-w-[15ch]"
+    >
       Read with <em className="font-medium italic">effortless</em> clarity.
     </h1>
   );

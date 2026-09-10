@@ -117,8 +117,13 @@ function senseFromDatamuse(word: string, rows: { word?: string; defs?: string[] 
   };
 }
 
-async function fetchJson(url: string, timeout = 7000): Promise<unknown | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+/**
+ * @param attempts Retries are worth it for a flaky connection and expensive for
+ * a dead one — every extra pass multiplies the wait before a fallback is even
+ * tried. Callers racing several sources pass 1.
+ */
+async function fetchJson(url: string, timeout = 7000, attempts = 2): Promise<unknown | null> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -130,28 +135,115 @@ async function fetchJson(url: string, timeout = 7000): Promise<unknown | null> {
     } finally {
       clearTimeout(timer);
     }
-    if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 220));
+    if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 220));
   }
   return null;
 }
 
-async function fetchRemote(word: string): Promise<WordSense | null> {
-  const datamuse = await fetchJson(`https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=d&max=5`);
-  if (Array.isArray(datamuse)) {
-    const sense = senseFromDatamuse(word, datamuse as { word?: string; defs?: string[] }[]);
-    if (sense) return sense;
-  }
+/**
+ * Free Dictionary first, Datamuse as the fallback.
+ *
+ * The order used to be the other way round, and Datamuse almost always answers,
+ * so Free Dictionary was effectively never reached. That matters because the
+ * two return different amounts: Free Dictionary carries a phonetic spelling,
+ * pronunciation audio and a usage example, and Datamuse carries a bare gloss.
+ * The card here renders all three, so with Datamuse winning every race, two
+ * thirds of it stayed empty for no reason.
+ *
+ * The same-origin proxy is tried ahead of the public host so the request works
+ * where a strict CSP would block a third-party origin.
+ */
+/** How long to hold a usable answer back, hoping for the richer one. */
+const RICHER_GRACE = 1_200;
 
-  for (const url of [
-    `/api/dictionary?q=${encodeURIComponent(word)}`,
-    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
-  ]) {
-    const data = await fetchJson(url);
-    if (!Array.isArray(data)) continue;
-    const sense = senseFromRemote(word, data as RemoteEntry[]);
-    if (sense) return sense;
-  }
-  return null;
+/** Whole-lookup deadline. Past this, say so rather than keep spinning. */
+const DEADLINE = 5_000;
+
+/**
+ * Whether Free Dictionary is answering at all right now.
+ *
+ * It is unreachable on some networks — blocked, or simply down — and when it is,
+ * every single lookup paid the grace period waiting for a reply that was never
+ * coming, and every miss paid the full retry budget of both sources stacked.
+ * A word with no entry took twelve seconds to report that, which reads as a
+ * hang, not an answer.
+ *
+ * So its health is remembered. Two failures in a row and it stops being waited
+ * for; a later success clears the mark, because a network that was down at
+ * breakfast may be fine by lunch.
+ */
+let richerFailures = 0;
+const RICHER_GIVE_UP = 2;
+
+/**
+ * Ask both dictionaries at once, and prefer the richer answer if it is prompt.
+ *
+ * The two sources are not equivalent. Free Dictionary returns a phonetic
+ * spelling, pronunciation audio and a usage example; Datamuse returns a bare
+ * gloss. The card renders all of that, so which one answers changes how much of
+ * it is filled in.
+ *
+ * Trying them in sequence is wrong in both directions, and I had it wrong both
+ * ways round before settling here. Datamuse first means it almost always wins
+ * and the richer fields stay permanently empty. Free Dictionary first means
+ * that when it is slow or unreachable — which happens, and `fetchJson` retries
+ * each URL twice — the reader waits ten seconds for a definition Datamuse could
+ * have given immediately.
+ *
+ * So they race. Free Dictionary is given a short grace period to arrive; past
+ * that, whatever answered is served. Nobody waits on a source that is having a
+ * bad day, and nobody gets a thinner entry than necessary when it is fine.
+ */
+async function fetchRemote(word: string): Promise<WordSense | null> {
+  const richer = (async (): Promise<WordSense | null> => {
+    for (const url of [
+      // Same-origin proxy first: it works where a strict CSP would block a
+      // third-party origin outright.
+      `/api/dictionary?q=${encodeURIComponent(word)}`,
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
+    ]) {
+      const data = await fetchJson(url, 2_500, 1);
+      if (!Array.isArray(data)) continue;
+      const sense = senseFromRemote(word, data as RemoteEntry[]);
+      if (sense) {
+        richerFailures = 0;
+        return sense;
+      }
+    }
+    richerFailures += 1;
+    return null;
+  })();
+
+  const plain = (async (): Promise<WordSense | null> => {
+    const data = await fetchJson(`https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=d&max=5`, 3_000, 1);
+    if (!Array.isArray(data)) return null;
+    return senseFromDatamuse(word, data as { word?: string; defs?: string[] }[]);
+  })();
+
+  // Neither promise rejects, so a failure resolves to null rather than
+  // collapsing the race.
+  // No point holding an answer back for a source that has stopped replying.
+  const grace = richerFailures >= RICHER_GIVE_UP ? 0 : RICHER_GRACE;
+
+  const first = await Promise.race([
+    richer,
+    plain.then((sense) =>
+      sense && grace
+        ? new Promise<WordSense | null>((r) => setTimeout(() => r(sense), grace))
+        : sense,
+    ),
+    // A hard stop on the whole lookup. Both sources retry internally, so their
+    // worst cases stack into something far longer than anyone will wait.
+    new Promise<null>((r) => setTimeout(() => r(null), DEADLINE)),
+  ]);
+  if (first) return first;
+
+  // Whichever is still running may yet answer, but not past the deadline.
+  const settled = await Promise.race([
+    Promise.all([richer, plain]).then(([a, c]) => a ?? c),
+    new Promise<null>((r) => setTimeout(() => r(null), 1_000)),
+  ]);
+  return settled;
 }
 
 export async function lookupWord(raw: string): Promise<WordSense | null> {

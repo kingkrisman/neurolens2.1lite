@@ -120,9 +120,6 @@ export function ParallaxHero({ children, className }: { children: ReactNode; cla
           />
         </div>
       </div>
-      <div className="parallax-mouse-mid pointer-events-none absolute inset-0" aria-hidden>
-        <div className="parallax-mid parallax-rings absolute inset-0" />
-      </div>
       <div className="parallax-mouse-glow parallax-glow pointer-events-none absolute inset-0" aria-hidden />
       <div className="parallax-veil pointer-events-none absolute inset-0" aria-hidden />
       <div className="parallax-mouse-near relative z-10">

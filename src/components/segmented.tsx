@@ -8,11 +8,14 @@ import {
   type KeyboardEvent,
 } from "react";
 import { cn } from "@/lib/utils";
+import { selection } from "@/lib/haptics";
 
 interface SegmentedOption<T extends string> {
   id: T;
   label: string;
   disabled?: boolean;
+  /** Why it is unavailable — surfaced on hover and to screen readers. */
+  disabledReason?: string;
 }
 
 export function Segmented<T extends string>({
@@ -90,6 +93,7 @@ export function Segmented<T extends string>({
     const current = enabled.findIndex((option) => option.id === value);
     const next = enabled[(current + delta + enabled.length) % enabled.length];
     if (!next) return;
+    selection();
     onChange(next.id);
     requestAnimationFrame(() => {
       rootRef.current
@@ -110,6 +114,7 @@ export function Segmented<T extends string>({
       event.preventDefault();
       const first = options.find((option) => !option.disabled);
       if (first) {
+        selection();
         onChange(first.id);
         requestAnimationFrame(() => {
           rootRef.current
@@ -121,6 +126,7 @@ export function Segmented<T extends string>({
       event.preventDefault();
       const last = [...options].reverse().find((option) => !option.disabled);
       if (last) {
+        selection();
         onChange(last.id);
         requestAnimationFrame(() => {
           rootRef.current
@@ -147,11 +153,19 @@ export function Segmented<T extends string>({
             type="button"
             data-seg={option.id}
             disabled={option.disabled}
+            title={option.disabled ? option.disabledReason : undefined}
+            aria-description={option.disabled ? option.disabledReason : undefined}
             role={isChoice ? "radio" : undefined}
             aria-checked={isChoice ? selected : undefined}
             aria-current={!isChoice && selected ? "page" : undefined}
             tabIndex={isChoice ? (selected ? 0 : -1) : undefined}
-            onClick={() => onChange(option.id)}
+            onClick={() => {
+              // Only when it actually moves: re-picking the option you
+              // are already on changed nothing, and a tick for nothing
+              // teaches the reader to stop trusting the feedback.
+              if (option.id !== value) selection();
+              onChange(option.id);
+            }}
             className={cn(
               "relative z-10 h-8 shrink-0 rounded-sm px-2 text-xs font-medium whitespace-nowrap text-muted transition-colors duration-[150ms] ease-[var(--ease-standard)] sm:px-3 sm:text-sm",
               "hover:text-fg",

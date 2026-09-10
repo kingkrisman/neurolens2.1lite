@@ -71,6 +71,34 @@
   --motion-medium: 350ms;
   --motion-slow: 400ms;
   --motion-emphasis: 500ms;
+
+  /* The duration scale above already matches the transitions.dev grid 1:1
+     (40/80/150/250/350/400/500), so it keeps its --motion-* names. These are
+     the dimensions the project had no tokens for: travel, pre-scale, pre-blur,
+     and the two overshoot curves. Pre-values settle to 1 / 0. */
+  --distance-micro: 4px;
+  --distance-small: 6px;
+  --distance-base: 8px;
+  --distance-medium: 12px;
+  --distance-large: 30px;
+
+  --scale-large: 0.96;
+  --scale-medium: 0.97;
+  --scale-small: 0.98;
+  --scale-tiny: 0.99;
+
+  /* Gutter a full-bleed shelf has to cancel to reach the viewport edge. Kept in
+     step with the Library page padding by hand — if that padding changes, this
+     changes with it, or the rows stop lining up with the headings above them. */
+  --shelf-inset: 1rem;
+
+  --blur-small: 2px;
+  --blur-medium: 3px;
+  --blur-large: 8px;
+
+  /* Entrances only — never bounce a close. */
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --ease-bounce-strong: cubic-bezier(0.34, 3.85, 0.64, 1);
 }
 
 @layer base {
@@ -304,7 +332,7 @@
     opacity: 0;
     transform: translate3d(0, 16px, 0);
     transition-property: opacity, transform;
-    transition-duration: 480ms;
+    transition-duration: var(--motion-emphasis);
     transition-timing-function: var(--ease-out);
   }
 
@@ -318,21 +346,34 @@
     display: none;
   }
 
-  .nl-shell.is-reading header {
+  /* Receding chrome, without blinding the glass.
+     Fading the header itself put opacity below 1 on it, and that makes it a
+     backdrop root — so `backdrop-filter` on the pane inside had nothing left to
+     sample and the reader lost the blur entirely. The dimming is applied to the
+     layers that carry colour and to the controls instead; the refracting pane
+     stays at full opacity, which is what keeps the page visible through it. */
+  .nl-shell.is-reading .nl-glass-tint,
+  .nl-shell.is-reading .nl-glass-content {
     opacity: 0.7;
+    transition: opacity var(--motion-fast) var(--ease-out);
   }
 
-  .nl-shell.is-reading header:hover,
-  .nl-shell.is-reading header:focus-within {
+  .nl-shell.is-reading header:hover .nl-glass-tint,
+  .nl-shell.is-reading header:hover .nl-glass-content,
+  .nl-shell.is-reading header:focus-within .nl-glass-tint,
+  .nl-shell.is-reading header:focus-within .nl-glass-content {
     opacity: 1;
   }
 
-  .nl-shell.is-reading-dim header {
+  .nl-shell.is-reading-dim .nl-glass-tint,
+  .nl-shell.is-reading-dim .nl-glass-content {
     opacity: 0.38;
   }
 
-  .nl-shell.is-reading-dim header:hover,
-  .nl-shell.is-reading-dim header:focus-within {
+  .nl-shell.is-reading-dim header:hover .nl-glass-tint,
+  .nl-shell.is-reading-dim header:hover .nl-glass-content,
+  .nl-shell.is-reading-dim header:focus-within .nl-glass-tint,
+  .nl-shell.is-reading-dim header:focus-within .nl-glass-content {
     opacity: 1;
   }
 
@@ -577,15 +618,6 @@
     transform: translate3d(0, calc(var(--parallax, 0px) * 0.18), 0);
   }
 
-  .parallax-rings {
-    background:
-      radial-gradient(circle at 74% 36%, transparent 11%, color-mix(in oklab, var(--color-fg) 16%, transparent) 11.5%, transparent 12.2%),
-      radial-gradient(circle at 74% 36%, transparent 20%, color-mix(in oklab, var(--color-fg) 11%, transparent) 20.5%, transparent 21.3%),
-      radial-gradient(circle at 74% 36%, transparent 31%, color-mix(in oklab, var(--color-fg) 7%, transparent) 31.5%, transparent 32.4%);
-    mix-blend-mode: multiply;
-    opacity: 0.7;
-  }
-
   .parallax-veil {
     background:
       linear-gradient(
@@ -601,6 +633,27 @@
         color-mix(in oklab, var(--color-bg) 18%, transparent) 52%,
         transparent 100%
       );
+  }
+
+  /* On a phone the copy runs the full width, so the horizontal veil has to
+     carry all the way across instead of clearing to the right for artwork. */
+  @media (width < 40rem) {
+    .parallax-veil {
+      background:
+        linear-gradient(
+          180deg,
+          color-mix(in oklab, var(--color-bg) 30%, transparent) 0%,
+          color-mix(in oklab, var(--color-bg) 55%, transparent) 42%,
+          color-mix(in oklab, var(--color-bg) 90%, transparent) 78%,
+          var(--color-bg) 100%
+        ),
+        linear-gradient(
+          90deg,
+          color-mix(in oklab, var(--color-bg) 62%, transparent) 0%,
+          color-mix(in oklab, var(--color-bg) 46%, transparent) 70%,
+          color-mix(in oklab, var(--color-bg) 32%, transparent) 100%
+        );
+    }
   }
 
   @supports (animation-timeline: scroll()) {
@@ -752,6 +805,117 @@
     contain-intrinsic-size: auto 22rem;
   }
 
+  /* Horizontal shelf. Cards are sized as a fraction of the viewport so the
+     next one is always half-visible at the right edge — that clipped card is
+     what tells you the row keeps going, which a grid cannot say. */
+  .nl-shelf {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 40%;
+    gap: 0.625rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* Full-bleed: the row runs to both edges and pads itself, so cards scroll
+       out of the viewport rather than stopping inside a centred column. */
+    margin-inline: calc(var(--shelf-inset) * -1);
+    padding-inline: var(--shelf-inset);
+    scroll-padding-inline: var(--shelf-inset);
+    /* Room for the hover lift, which would otherwise be clipped by overflow. */
+    padding-block: 0.5rem;
+  }
+
+  .nl-shelf::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nl-shelf > * {
+    scroll-snap-align: start;
+  }
+
+  @media (min-width: 40rem) {
+    .nl-shelf {
+      --shelf-inset: 2rem;
+      grid-auto-columns: 26%;
+      gap: 0.75rem;
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .nl-shelf {
+      grid-auto-columns: 18.5%;
+    }
+  }
+
+  @media (min-width: 90rem) {
+    .nl-shelf {
+      grid-auto-columns: 15%;
+    }
+  }
+
+  /* Poster lift is pointer-only: on touch there is no hover to leave, so the
+     transform would latch on after a tap and stay until something else moved. */
+  .nl-poster {
+    transition:
+      transform var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .nl-poster:hover {
+      transform: scale(1.055);
+      z-index: 20;
+    }
+  }
+
+  .nl-poster:active {
+    transform: scale(0.975);
+  }
+
+  /* Title and meta stay out of the way until the poster is hovered, so a shelf
+     reads as artwork first and only resolves into text where you point. */
+  .nl-poster-meta {
+    opacity: 0;
+    transform: translateY(var(--distance-small));
+    transition:
+      opacity var(--motion-fast) var(--ease-out),
+      transform var(--motion-fast) var(--ease-out);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .nl-poster:hover .nl-poster-meta,
+    .nl-poster:focus-visible .nl-poster-meta {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Touch has no hover state to reveal it, so the meta is simply always on. */
+  @media not all and (hover: hover) {
+    .nl-poster-meta {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-shelf {
+      scroll-behavior: auto;
+    }
+
+    .nl-poster,
+    .nl-poster-meta {
+      transition: none;
+    }
+
+    .nl-poster:hover {
+      transform: none;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .pane-scroll,
     .reader-scroll {
@@ -777,6 +941,475 @@
     animation: shimmer 0.9s linear infinite;
   }
 
+  /* A loading block has to read as "content is coming", not as an empty box.
+     Both tints derive from theme tokens, so this holds on every scheme: the
+     base is a foreground wash, the sweep is page-colored, which is always the
+     lighter of the two whether the scheme is light or dark. */
+  .skeleton {
+    background-color: color-mix(in oklab, var(--color-fg) 12%, transparent);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklab, var(--color-bg) 55%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      background-image: none;
+      animation: none;
+    }
+  }
+
+  /* Icon micro-motion.
+     Applied to the <svg> inside a `.group` trigger. Every rule is transform-only
+     so it composites, every duration sits under the 300ms UI ceiling, and the
+     whole set is gated on a real pointer — a touch tap would otherwise latch the
+     hover state and leave the icon stuck mid-gesture. */
+  .icon-motion {
+    transition:
+      transform var(--motion-quick) var(--ease-out),
+      opacity var(--motion-quick) var(--ease-out);
+    will-change: transform;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    /* Directional: nudges the way it will send you. */
+    .icon-group:hover .icon-shift {
+      transform: translateX(2px);
+    }
+    .icon-group:hover .icon-shift-back {
+      transform: translateX(-2px);
+    }
+    /* Neutral: a small swell, for icons with no direction to imply. */
+    .icon-group:hover .icon-lift {
+      transform: scale(1.12);
+    }
+    .icon-group:hover .icon-rise {
+      transform: translateY(-1.5px);
+    }
+    .icon-group:hover .icon-drop {
+      transform: translateY(1.5px);
+    }
+    /* Mechanical: for settings and refresh, where a turn reads as "adjust". */
+    .icon-group:hover .icon-turn {
+      transform: rotate(38deg);
+    }
+    .icon-group:hover .icon-turn-full {
+      transform: rotate(180deg);
+    }
+  }
+
+  /* Press reads on every device, so it is not behind the hover gate. */
+  .icon-group:active .icon-motion {
+    transform: scale(0.88);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .icon-motion {
+      transition: none;
+    }
+    .icon-group:hover .icon-shift,
+    .icon-group:hover .icon-shift-back,
+    .icon-group:hover .icon-lift,
+    .icon-group:hover .icon-rise,
+    .icon-group:hover .icon-drop,
+    .icon-group:hover .icon-turn,
+    .icon-group:hover .icon-turn-full,
+    .icon-group:active .icon-motion {
+      transform: none;
+    }
+  }
+
+  /* Text swap, straight off the transitions-polish token row: 150ms
+     (--motion-quick), 4px travel (--distance-micro), 2px pre-blur
+     (--blur-small). The literal `ease-in-out` is the token's own value — the
+     project's --ease-in-out holds a much stronger curve for surface motion. */
+  /* `backwards`, not `both`. The last frame here sets `transform: translateY(0)`
+     and `filter: blur(0)`, and `both` keeps the element under animation control
+     afterwards — so both resolve to real values rather than to nothing, making
+     the header title a permanent stacking context and backdrop root. That is
+     exactly what blinded the glass pane twice; this one sits inside the header,
+     so it was the next in line to do it. */
+  .nl-title-swap {
+    animation: nl-title-swap var(--motion-quick) ease-in-out backwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-title-swap {
+      animation: none;
+    }
+  }
+
+  /* Menu opens from the button that spawned it, not from its own centre, so
+     the panel reads as belonging to the trigger. Dropdown-open values from the
+     motion tokens: 250ms (--motion-fast) and --scale-medium as the pre-scale. */
+  .nl-menu-in {
+    animation: nl-menu-in var(--motion-fast) var(--ease-out) backwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-menu-in {
+      animation: none;
+    }
+  }
+
+  /* The mark is an iris, so it dilates: the pupil opens, the spokes spread a
+     little behind it. `fill-box` puts every transform origin on the glyph's own
+     centre — all three layers are symmetric about 48,48, so one rule covers
+     them and nothing drifts off-axis while scaling.
+
+     Motion lives on the mark rather than the button because a whole-button
+     scale would drag the wordmark with it, and the eye is the part that should
+     respond. */
+  .nl-mark-pupil,
+  .nl-mark-rays,
+  .nl-mark-branches {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition:
+      transform var(--motion-fast) var(--ease-out),
+      opacity var(--motion-fast) var(--ease-out);
+  }
+
+  /* Hover only where there is a real pointer: on touch the state latches after
+     a tap and the mark would sit dilated with nothing hovering it. */
+  @media (hover: hover) and (pointer: fine) {
+    .icon-group:hover .nl-mark-pupil {
+      transform: scale(1.32);
+    }
+    .icon-group:hover .nl-mark-rays {
+      transform: scale(1.05) rotate(5deg);
+    }
+    .icon-group:hover .nl-mark-branches {
+      transform: scale(1.09) rotate(-4deg);
+      opacity: 0.85;
+    }
+  }
+
+  /* Press contracts it — the opposite of dilation, so the gesture reads. */
+  .icon-group:active .nl-mark-pupil {
+    transform: scale(0.86);
+  }
+
+  /* Switching view replays the dilation once. The mark is keyed on the active
+     tab in the shell, so a new element mounts and the animation runs from the
+     top without any state to reset. */
+  .nl-mark .nl-mark-pupil {
+    animation: nl-pupil-dilate var(--motion-slow) var(--ease-out);
+  }
+  .nl-mark .nl-mark-rays {
+    animation: nl-rays-spread var(--motion-slow) var(--ease-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-mark-pupil,
+    .nl-mark-rays,
+    .nl-mark-branches {
+      transition: none;
+      animation: none;
+    }
+  }
+
+  /* Liquid glass.
+
+     The blur lives on `.nl-glass-pane`, not on the header, because the pane is
+     also what carries `filter: url(#…)` — and a filter on the header itself
+     would refract its own text along with the page behind it. Separating them
+     is what lets the backdrop be distorted while the type stays sharp. */
+  .nl-glass {
+    background: transparent;
+  }
+
+  /* The refracting layer. Paints nothing of its own on purpose — `filter`
+     applies to an element's own content, so any background here would be run
+     through the displacement chain and screen-blended toward grey. Blur and
+     saturation only; the colour arrives on the tint layer above.
+     Saturation above 100% is what separates glass from a grey scrim: real glass
+     concentrates the colour behind it rather than washing it out. */
+  .nl-glass-pane {
+    background: transparent;
+    backdrop-filter: blur(20px) saturate(185%);
+    -webkit-backdrop-filter: blur(20px) saturate(185%);
+  }
+
+  /* Body and thickness: a lit top edge, a shaded bottom one. Unfiltered, so it
+     stays the colour it was written as. */
+  .nl-glass-tint {
+    background: color-mix(in oklab, var(--color-bg) 66%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 55%, transparent),
+      inset 0 -1px 0 color-mix(in oklab, var(--color-fg) 8%, transparent),
+      0 1px 24px -8px color-mix(in oklab, var(--color-fg) 22%, transparent);
+  }
+
+  /* Dark schemes take less white: a bright sheen over dark ink reads as fog. */
+  :root[data-scheme="night"] .nl-glass-tint,
+  :root[data-scheme="ink"] .nl-glass-tint {
+    background: color-mix(in oklab, var(--color-bg) 66%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 16%, transparent),
+      inset 0 -1px 0 color-mix(in oklab, black 22%, transparent),
+      0 1px 24px -8px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Without backdrop-filter the blur silently does nothing, so the pane has to
+     carry enough opacity by itself to keep the header legible. */
+  @supports not (backdrop-filter: blur(1px)) {
+    .nl-glass-tint {
+      background: color-mix(in oklab, var(--color-bg) 94%, transparent);
+    }
+  }
+
+  /* Library > Yours: give the stacked sections a rhythm.
+     Upload, Bookmarks, Highlights and Recently read all carry the same small
+     heading, so evenly spaced they read as one long list. A hairline above each
+     section after the first separates them without adding chrome. */
+  .nl-yours > section + section {
+    margin-top: 2.5rem;
+    padding-top: 2.5rem;
+    border-top: 1px solid color-mix(in oklab, var(--color-fg) 8%, transparent);
+  }
+
+  /* Touch targets in the reading dock are decided by the pointer, not the
+     viewport.
+
+     The dock sized itself by width — 44px below `sm`, 36px above — which is the
+     wrong signal. A tablet is a touch device at 834px, so it was handing a
+     finger nine 36px targets; a desktop with a mouse does not need 44px at all.
+     `pointer: coarse` asks the question that actually matters, so every device
+     driven by a fingertip gets the full target whatever its width. */
+  @media (pointer: coarse) {
+    .reader-dock [role="toolbar"] button {
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+    }
+  }
+
+  /* The fixation preview re-setting itself.
+     A cross-fade rather than a swap: the sentence is the same sentence either
+     way, so it should look like the type changing under it, not like one block
+     of text being replaced by another. */
+  .nl-demo-swap {
+    animation: nl-demo-swap var(--motion-emphasis) var(--ease-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-demo-swap {
+      animation: none;
+    }
+  }
+
+  /* Lens, the companion.
+     The face takes the paper colour and the eyes take the ink, so it belongs to
+     whatever scheme the reader has chosen rather than carrying its own palette
+     around. */
+  /* The face has to read against whatever it is placed on. Filling it with
+     `--color-surface` made it vanish the moment it sat on a surface-coloured
+     panel, leaving two eyes floating in the card. A fill mixed away from the
+     page plus a hairline ring gives it an edge on both the panel and the page,
+     without introducing a colour that belongs to no scheme. */
+  .nl-companion-face {
+    fill: color-mix(in oklab, var(--color-bg) 82%, var(--color-fg) 4%);
+    stroke: color-mix(in oklab, var(--color-fg) 12%, transparent);
+    stroke-width: 1.5;
+  }
+
+  :root[data-scheme="night"] .nl-companion-face,
+  :root[data-scheme="ink"] .nl-companion-face {
+    fill: color-mix(in oklab, var(--color-surface) 78%, var(--color-fg) 8%);
+    stroke: color-mix(in oklab, white 14%, transparent);
+  }
+
+  .nl-companion-eye {
+    fill: var(--color-fg);
+    /* Height is animated because that is what a blink is — the lid closing,
+       not the eye shrinking — so the transition is on height and y alone. */
+    transition:
+      height var(--motion-instant, 120ms) var(--ease-out),
+      y var(--motion-instant, 120ms) var(--ease-out);
+  }
+
+  /* No transition on the gaze.
+     The easing lives in the animation loop now, which writes a new transform
+     every frame — and a 320ms CSS transition on top of that restarts on each
+     write, so the eyes were perpetually interpolating toward a target that had
+     already moved and never actually arrived. Two easings fighting produced
+     roughly two pixels of travel. */
+  .nl-companion-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .nl-companion-think {
+    fill: var(--color-accent);
+    animation: nl-companion-think 1.6s var(--ease-standard) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-companion-eye,
+    .nl-companion-eyes {
+      transform: none !important;
+    }
+    .nl-companion-think {
+      animation: none;
+    }
+  }
+
+  /* Motion cues.
+     Not the same as prefers-reduced-motion, which is a system-wide switch a
+     reader may not want on everywhere. Motion sickness is provoked by one
+     specific thing — a large surface travelling at a different rate from the
+     frame around it — so this stops the parallax and scroll-linked drift and
+     leaves the small state-change animations, which carry meaning and provoke
+     nothing. */
+  [data-motion-cues="true"] .parallax-far,
+  [data-motion-cues="true"] .parallax-mid,
+  [data-motion-cues="true"] .parallax-near,
+  [data-motion-cues="true"] .parallax-mouse-far,
+  [data-motion-cues="true"] .parallax-mouse-mid,
+  [data-motion-cues="true"] .parallax-mouse-near,
+  [data-motion-cues="true"] .parallax-mouse-glow,
+  [data-motion-cues="true"] [data-scrub],
+  [data-motion-cues="true"] [data-scrub-fade] {
+    transform: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* The reveal still happens, as opacity alone: content appearing is
+     information, content sliding is the part that unsettles. */
+  [data-motion-cues="true"] .io-reveal {
+    transform: none !important;
+  }
+
+  /* The cue field.
+     Two columns of dots pinned to the edges of the screen, travelling against
+     the scroll. Peripheral vision gets an unambiguous read on direction and
+     speed while central vision stays on the words — the same idea as the cues
+     iOS shows for reading in a moving car. */
+  .nl-cue-edge {
+    position: absolute;
+    top: -64px;
+    bottom: -64px;
+    width: 2.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    align-items: center;
+    /* Lean carries lateral movement, so a turn reads as a turn rather than as
+       more of the same vertical drift. */
+    transform: translate(var(--nl-cue-lean, 0px), var(--nl-cue-shift, 0px));
+    transition: transform 90ms linear;
+  }
+
+  .nl-cue-left {
+    left: 0;
+  }
+
+  .nl-cue-right {
+    right: 0;
+  }
+
+  .nl-cue-dot {
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--color-fg) 34%, transparent);
+    opacity: var(--nl-cue-strength, 0.25);
+    transition: opacity 220ms var(--ease-out);
+  }
+
+  /* On a narrow screen the columns would sit under the thumbs and over the
+     text, so they thin down rather than crowd the page. */
+  @media (max-width: 40rem) {
+    .nl-cue-edge {
+      width: 1.35rem;
+    }
+    .nl-cue-dot {
+      width: 0.3rem;
+      height: 0.3rem;
+    }
+  }
+
+  /* The floating companion.
+     A slow bob while idle, so it reads as present rather than parked. Small
+     enough — three pixels over five seconds — to sit below the threshold that
+     pulls attention, which matters when the thing is on screen the whole time
+     someone is trying to read. */
+  /* The bob rides the face, not the button.
+     Animating the button meant the hit target itself never stopped moving —
+     which is a real cost for anyone with a tremor or limited fine motor
+     control, and this app is built for people who often have both. The visual
+     breathes; the thing you have to press stays exactly where it is. */
+  .nl-neuro-orb .nl-companion {
+    animation: nl-neuro-bob 5.5s var(--ease-standard) infinite;
+  }
+
+  .nl-neuro-orb:hover .nl-companion {
+    animation-play-state: paused;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-neuro-orb .nl-companion {
+      animation: none;
+    }
+  }
+
+  /* The microphone, while it is actually listening.
+     A pulse rather than a static colour: an open microphone should be visible
+     from the corner of the eye, because the one thing worse than a mic that
+     will not start is one the reader does not realise is running. */
+  .nl-neuro-listening {
+    animation: nl-listening 1.4s var(--ease-standard) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-neuro-listening {
+      animation: none;
+      outline: 2px solid color-mix(in oklab, var(--color-accent) 55%, transparent);
+    }
+  }
+
+  /* The end-of-part card arrives rather than appears.
+     A completion that pops in has the character of a notification; one that
+     rises the way the text does reads as part of the page you were already
+     reading, which is what it is. */
+  .nl-part-done {
+    animation: nl-part-done var(--motion-emphasis) var(--ease-out) backwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-part-done {
+      animation: none;
+    }
+  }
+
+  /* Scroll edge effect, not a divider.
+     A 1px rule under floating chrome announces the chrome. The material
+     guidance is to fade content out where it passes beneath instead, and only
+     while something is actually under there — so the header draws no line at
+     all, and this gradient is absent at rest and materialises on first
+     scroll. */
+  .nl-scroll-edge {
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-out);
+  }
+
+  html[data-scrolled="true"] .nl-scroll-edge {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nl-scroll-edge {
+      transition: none;
+    }
+  }
+
   .hold-fill {
     clip-path: inset(0 100% 0 0);
     transition: clip-path 200ms var(--ease-out);
@@ -789,7 +1422,8 @@
 
   .reveal {
     clip-path: inset(0 0 100% 0);
-    transition: clip-path 600ms var(--ease-in-out);
+    /* Content reveal: on-grid at --motion-emphasis (500ms). */
+    transition: clip-path var(--motion-emphasis) var(--ease-in-out);
   }
 
   .reveal-visible {
@@ -828,6 +1462,109 @@
 }
 
 @keyframes fade-up {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes nl-listening {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent) 45%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@keyframes nl-part-done {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nl-neuro-bob {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -5px;
+  }
+}
+
+@keyframes nl-companion-think {
+  0%,
+  100% {
+    opacity: 0.25;
+    r: 3;
+  }
+  50% {
+    opacity: 1;
+    r: 4.5;
+  }
+}
+
+@keyframes nl-demo-swap {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+
+@keyframes nl-pupil-dilate {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+  45% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes nl-rays-spread {
+  0% {
+    transform: scale(0.88) rotate(-10deg);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes nl-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--scale-medium)) translateY(calc(var(--distance-micro) * -1));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes nl-title-swap {
+  from {
+    opacity: 0;
+    transform: translateY(var(--distance-micro));
+    filter: blur(var(--blur-small));
+  }
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1292,14 +2029,6 @@ html[data-scheme="forest"] .grain {
   opacity: 0.08;
 }
 
-html[data-scheme="night"] .parallax-rings,
-html[data-scheme="ink"] .parallax-rings,
-html[data-scheme="dusk"] .parallax-rings,
-html[data-scheme="forest"] .parallax-rings {
-  mix-blend-mode: overlay;
-  opacity: 0.4;
-}
-
 [data-scheme="peach"] {
   --color-bg: #f4ddd2;
   --color-surface: #faebe3;
@@ -1354,17 +2083,30 @@ html[data-scheme="forest"] .parallax-rings {
   min-height: 5.25rem;
 }
 
+/* `backwards`, not `both`.
+   With `both` the header stays under animation control after it finishes, and
+   the final `transform: none` resolves to the identity matrix rather than to
+   nothing. An identity matrix still counts as a transform, so the header became
+   a permanent backdrop root and the glass below it had nothing left to blur.
+   `backwards` covers the pre-start frame and then hands the element back, so the
+   transform really is gone once the entrance is done. */
 .nl-chrome-in {
-  animation: nl-chrome-in 0.45s var(--ease-out) both;
+  animation: nl-chrome-in 0.45s var(--ease-out) backwards;
 }
 
+/* `backwards`, never `both`, for anything that animates transform.
+   `both` holds the element under animation control after it finishes, and the
+   final `transform: none` then resolves to the identity matrix — which still
+   counts as a transform, making the element a permanent backdrop root. That is
+   what blanked the header glass twice. `backwards` covers the pre-start frame
+   and then hands the element back. */
 .nl-footer-in {
-  animation: nl-footer-in 0.4s 0.08s var(--ease-out) both;
+  animation: nl-footer-in 0.4s 0.08s var(--ease-out) backwards;
 }
 
 .nl-stage-in {
   --nl-stage-from: 14px;
-  animation: nl-stage-in 0.28s var(--ease-out) both;
+  animation: nl-stage-in 0.28s var(--ease-out) backwards;
 }
 
 .nl-stage-in[data-dir="-1"] {

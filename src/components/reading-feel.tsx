@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
-import { tapFeedback } from "@/lib/feedback";
+import { feedback } from "@/lib/feedback";
 import { Button } from "@/components/ui/button";
 import type { ReadingFeel } from "@/lib/types";
 
@@ -22,7 +22,10 @@ export function ReadingFeelBar() {
   if (progress < 0.12 || feel) return null;
 
   function choose(id: ReadingFeel) {
-    tapFeedback(id === "right" ? "good" : "ok");
+    feedback(id === "right" ? "good" : "ok", {
+      message:
+        id === "right" ? "Pace noted as right" : id === "slow" ? "Marked as too fast" : "Marked as too slow",
+    });
     submit(id);
     if (id === "right") {
       toast.success("Noted. We’ll keep this pace in mind.");

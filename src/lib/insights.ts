@@ -151,3 +151,64 @@ export function buildSuggestions({
 
   return out.slice(0, 3);
 }
+
+export interface WeeklyReading {
+  /** Milliseconds at the start of that week (local Monday). */
+  weekStart: number;
+  words: number;
+  sessions: number;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Local Monday 00:00 for a timestamp. */
+export function startOfWeek(at: number): number {
+  const date = new Date(at);
+  date.setHours(0, 0, 0, 0);
+  // getDay() is Sunday-first; shift so weeks begin on Monday.
+  const shift = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - shift);
+  return date.getTime();
+}
+
+/**
+ * Reading grouped by week, most recent last.
+ *
+ * Insights could say how one sitting went and what the totals were, but not
+ * whether someone is reading more than they were — which is the question that
+ * makes a habit visible. Empty weeks are filled in rather than skipped: a gap
+ * is the most informative part of the series, and dropping it would draw a
+ * steady line through a month someone did not read at all.
+ */
+export function weeklyReading(
+  sessions: { openedAt: number; content: string }[],
+  weeks = 8,
+  now = Date.now(),
+): WeeklyReading[] {
+  const thisWeek = startOfWeek(now);
+  const buckets = new Map<number, WeeklyReading>();
+
+  for (let i = weeks - 1; i >= 0; i -= 1) {
+    const weekStart = thisWeek - i * WEEK_MS;
+    buckets.set(weekStart, { weekStart, words: 0, sessions: 0 });
+  }
+
+  for (const session of sessions) {
+    const weekStart = startOfWeek(session.openedAt);
+    const bucket = buckets.get(weekStart);
+    if (!bucket) continue;
+    bucket.words += session.content.trim() ? session.content.trim().split(/\s+/).length : 0;
+    bucket.sessions += 1;
+  }
+
+  return [...buckets.values()];
+}
+
+/** How this week compares with the one before, as a signed fraction. */
+export function weekOverWeek(series: WeeklyReading[]): number | null {
+  if (series.length < 2) return null;
+  const current = series[series.length - 1]?.words ?? 0;
+  const previous = series[series.length - 2]?.words ?? 0;
+  if (previous === 0) return current > 0 ? 1 : null;
+  return (current - previous) / previous;
+}

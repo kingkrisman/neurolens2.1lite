@@ -5,6 +5,7 @@ import {
   detectChapters,
   headingTitle,
   joinTextChapters,
+  paginateLongText,
   splitTextChapters,
 } from "./chapters.ts";
 
@@ -116,5 +117,40 @@ describe("detectChapters", () => {
     assert.equal(chapters[1].startPage, 4);
     assert.equal(chapterAtPage(chapters, 3), 1);
     assert.equal(chapterAtPage(chapters, 4), 2);
+  });
+});
+
+describe("paginateLongText", () => {
+  const para = (n: number) =>
+    `${"word ".repeat(200).trim()} This is paragraph ${n} of the sample text.`;
+  const long = Array.from({ length: 80 }, (_, i) => para(i + 1)).join("\n\n");
+
+  it("leaves short text alone", () => {
+    assert.deepEqual(paginateLongText("A short note that nobody needs paged."), []);
+  });
+
+  it("splits a long text into multiple parts", () => {
+    const parts = paginateLongText(long);
+    assert.ok(parts.length > 1, "expected more than one part");
+    assert.equal(parts[0].title, "Part 1");
+  });
+
+  it("preserves every word and the paragraph breaks", () => {
+    const parts = paginateLongText(long);
+    const rejoined = parts.map((part) => part.body).join("\n\n");
+    assert.equal(
+      rejoined.split(/\s+/).length,
+      long.split(/\s+/).length,
+      "pagination must not drop or add words",
+    );
+    assert.ok(parts[0].body.includes("\n\n"), "paragraph breaks should survive");
+  });
+
+  it("never splits mid-paragraph", () => {
+    for (const part of paginateLongText(long)) {
+      for (const block of part.body.split("\n\n")) {
+        assert.match(block.trim(), /paragraph \d+ of the sample text\.$/);
+      }
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  measureReadingStrain,
   recommendAdaptations,
   calcCurrentWpm,
   type AdaptiveRecommendation,
@@ -7,6 +8,13 @@ import {
   type PauseEvent,
   type RereadEvent,
 } from "./adaptive/engine";
+import {
+  learnFromOutcome,
+  learnFromPreference,
+  noteApplied,
+  type AdaptiveMemory,
+} from "./adaptive/memory.ts";
+import { PREFERENCE_WEIGHT, readPreference } from "./adaptive/preference.ts";
 import type { SkipEvent } from "./reconnect";
 import { classifyReading } from "./reading-patterns.ts";
 import type { NeuralEvent } from "./neural.ts";
@@ -14,11 +22,12 @@ import { applyColorScheme, isThemeId } from "./scheme";
 import { resolveRhythmCurve } from "./rhythm";
 import { isCvdKind, type CvdKind } from "./color-vision";
 import { splitPdfPages } from "./pdf-pages";
-import { chapterAtPage, detectChapters, splitTextChapters } from "./chapters";
+import { chapterAtPage, detectChapters, paginateLongText, splitTextChapters } from "./chapters";
 import { forgetPdfDocument } from "./pdf-session";
 import {
   READING_PROFILES,
   type Bookmark,
+  type Highlight,
   type ContentKind,
   type FontId,
   type LockableSetting,
@@ -31,6 +40,7 @@ import {
 } from "./types";
 
 const SESSIONS_KEY = "neurolens-sessions";
+const ADAPTIVE_MEMORY_KEY = "neurolens-adaptive-memory";
 const PROFILE_KEY = "neurolens-profile";
 const MODE_KEY = "neurolens-mode";
 const TARGET_WPM_KEY = "neurolens-target-wpm";
@@ -109,17 +119,39 @@ interface AppState {
   reading: ReadingSnapshot;
   recommendation: AdaptiveRecommendation | null;
   dismissedRules: AdaptiveRule[];
+  /** What the engine has learned about which levers help this reader. */
+  adaptiveMemory: AdaptiveMemory;
   lastAdaptiveChange: AppliedAdaptiveChange | null;
   lockedSettings: LockableSetting[];
   savedProfiles: SavedProfile[];
   bookmarks: Bookmark[];
-  highlights: Record<string, number[]>;
+  highlights: Record<string, Highlight[]>;
   readingFeel: ReadingFeel | null;
   cvdPreview: CvdKind;
   pdfPage: number;
   pdfPageCount: number;
   chapterIndex: number;
   chapterCount: number;
+  /**
+   * Where in the open section to place the reader, 0–1; 0 means the top.
+   *
+   * Separate from `reading.progress`, which looks like the same number but is
+   * live telemetry: the tracker rewrites it from scroll within a frame or two
+   * of a book opening, so a restore point parked there was reliably zeroed
+   * before the reader could use it. This one is written once and consumed once.
+   */
+  restoreTo: number;
+  /**
+   * A place in the book something else has asked the reader to go to.
+   *
+   * The command palette can find a passage but cannot scroll to it — the line
+   * only exists inside the reader, and only once its section is rendered. So the
+   * request is left here and the reader picks it up on mount, which also means
+   * the palette does not need to know whether the reader is even open yet.
+   */
+  pendingJump: { section: number; lineIdx: number } | null;
+  requestJump: (section: number, lineIdx: number) => void;
+  clearJump: () => void;
   hydrate: () => void;
   setTab: (tab: TabId) => void;
   startReading: (text: string, meta?: StartReadingMeta) => void;
@@ -139,7 +171,9 @@ interface AppState {
   applySavedProfile: (saved: SavedProfile) => void;
   saveCurrentProfile: (name: string) => void;
   deleteSavedProfile: (id: string) => void;
-  toggleHighlight: (lineIdx: number) => void;
+  addHighlight: (mark: Omit<Highlight, "at">) => void;
+  removeHighlight: (lineIdx: number, section: number, start: number) => void;
+  annotateHighlight: (lineIdx: number, section: number, start: number, note: string) => void;
   toggleBookmark: () => void;
   removeBookmark: (id: string) => void;
   submitReadingFeel: (feel: ReadingFeel) => void;
@@ -185,6 +219,10 @@ function normalizeProfile(profile: ReadingProfile): ReadingProfile {
     attentionFollow: profile.attentionFollow === "pointer" ? "pointer" : "line",
     focusBand: profile.focusBand === 2 || profile.focusBand === 3 ? profile.focusBand : 1,
     plainLanguage: Boolean(profile.plainLanguage),
+    motionCues: Boolean(profile.motionCues),
+    // Present unless the reader has turned it off, so an existing profile that
+    // predates the companion still gets one.
+    companion: profile.companion !== false,
   };
 }
 
@@ -211,12 +249,69 @@ function forgetLocal(keys: string[]) {
   }
 }
 
+/** Roughly the ceiling browsers put on one localStorage origin, minus headroom
+ *  for the other keys this app writes. */
+const SESSIONS_BUDGET = 3_500_000;
+
+/**
+ * Persist history, shedding the oldest entries until it fits.
+ *
+ * Sessions carry their full text so reading can resume, so a shelf of novels
+ * runs into the storage quota. `writeLocal` swallows that failure, which meant
+ * the real behaviour was worse than it looked: one oversized history and
+ * *nothing* saved after it, newest included. Dropping whole old sessions keeps
+ * recent books resumable, and keeps the invariant that a session either
+ * restores completely or is not offered at all.
+ */
 function persistSessions(sessions: Session[]) {
-  writeLocal(SESSIONS_KEY, JSON.stringify(sessions));
+  let kept = sessions;
+  let payload = JSON.stringify(kept);
+  while (payload.length > SESSIONS_BUDGET && kept.length > 1) {
+    kept = kept.slice(0, -1);
+    payload = JSON.stringify(kept);
+  }
+  writeLocal(SESSIONS_KEY, payload);
+}
+
+function persistAdaptiveMemory(memory: AdaptiveMemory) {
+  writeLocal(ADAPTIVE_MEMORY_KEY, JSON.stringify(memory));
 }
 
 function persistTargetWpm(value: number) {
   writeLocal(TARGET_WPM_KEY, String(value));
+}
+
+/**
+ * Read stored highlights, upgrading the old shape on the way in.
+ *
+ * Highlights used to be a bare `number[]` of line indices. Those indices are no
+ * longer meaningful on their own — they were ambiguous across sections, which
+ * is the bug this shape replaces — and the text they referred to was never
+ * recorded, so there is nothing to recover them from. They are dropped rather
+ * than guessed at: a highlight pointing at the wrong sentence is worse than one
+ * that is gone, and silently relocating someone's marks would be its own bug.
+ */
+function readHighlights(raw: unknown): Record<string, Highlight[]> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, Highlight[]> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue;
+    const kept = value
+      .filter(
+        (item): item is Highlight =>
+          Boolean(item) && typeof item === "object" && typeof (item as Highlight).lineIdx === "number",
+      )
+      // Marks saved before highlighting had an extent covered a whole sentence,
+      // so that is exactly what they are restored as: the range they always
+      // meant, now written down.
+      .map((item) =>
+        typeof item.start === "number" && typeof item.end === "number"
+          ? item
+          : { ...item, start: 0, end: (item.text ?? "").length },
+      );
+    if (kept.length) out[key] = kept;
+  }
+  return out;
 }
 
 function textKey(text: string) {
@@ -232,6 +327,7 @@ function refreshRecommendation(
   existing: AdaptiveRecommendation | null,
   feel: ReadingFeel | null,
   lockedSettings: LockableSetting[],
+  memory: AdaptiveMemory = {},
 ): AdaptiveRecommendation | null {
   if (mode !== "adaptive") return null;
   if (existing) return existing;
@@ -258,10 +354,11 @@ function refreshRecommendation(
     },
     dismissedRules,
     lockedSettings,
+    memory,
   );
 }
 
-function withSessionMetrics(sessions: Session[], text: string, reading: ReadingSnapshot, targetWpm: number): Session[] {
+function withSessionMetrics(sessions: Session[], text: string, reading: ReadingSnapshot, targetWpm: number, section: number): Session[] {
   if (!text) return sessions;
   const idleMs = reading.pausedAt ? Math.max(0, Date.now() - reading.pausedAt) : 0;
   const pattern = classifyReading({
@@ -284,6 +381,7 @@ function withSessionMetrics(sessions: Session[], text: string, reading: ReadingS
       ? {
           ...session,
           progress: reading.progress,
+          section: section > 0 ? section : undefined,
           currentWpm: reading.currentWpm,
           pauseCount: reading.pauses.length,
           rereadCount: reading.rereads.length,
@@ -319,6 +417,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   reading: EMPTY_READING,
   recommendation: null,
   dismissedRules: [],
+  adaptiveMemory: {},
+  pendingJump: null,
   lastAdaptiveChange: null,
   lockedSettings: [],
   savedProfiles: [],
@@ -330,11 +430,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   pdfPageCount: 0,
   chapterIndex: 0,
   chapterCount: 0,
+  restoreTo: 0,
 
   hydrate: () => {
     if (get().hydrated || typeof window === "undefined") return;
     try {
       const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || "[]") as Session[];
+      const adaptiveMemory = JSON.parse(
+        localStorage.getItem(ADAPTIVE_MEMORY_KEY) || "{}",
+      ) as AdaptiveMemory;
       const savedProfile = localStorage.getItem(PROFILE_KEY);
       const savedMode = (localStorage.getItem(MODE_KEY) as ReadingMode | null) ?? "default";
       const mode = READING_PROFILES[savedMode] ? savedMode : "default";
@@ -358,13 +462,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       set({
         sessions: Array.isArray(sessions) ? sessions : [],
+        adaptiveMemory:
+          adaptiveMemory && typeof adaptiveMemory === "object" ? adaptiveMemory : {},
         profile,
         mode,
         targetWpm: Number.isFinite(savedWpm) && savedWpm >= 120 ? savedWpm : 220,
         lockedSettings: Array.isArray(lockedSettings) ? lockedSettings : [],
         savedProfiles: Array.isArray(savedProfiles) ? savedProfiles : [],
         bookmarks: Array.isArray(bookmarks) ? bookmarks : [],
-        highlights: highlights && typeof highlights === "object" ? highlights : {},
+        highlights: readHighlights(highlights),
         cvdPreview,
         hydrated: true,
       });
@@ -372,6 +478,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ hydrated: true });
     }
   },
+
+  requestJump: (section, lineIdx) => set({ pendingJump: { section, lineIdx } }),
+  clearJump: () => set({ pendingJump: null }),
 
   setTab: (tab) => {
     const current = get().tab;
@@ -398,11 +507,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const title = meta?.title || text.split(/\n/).find((line) => line.trim())?.slice(0, 60) || "Untitled reading";
     const sessions = [
       { title, content: text, openedAt: Date.now(), progress: 0, kind, sourceId: meta?.sourceId },
-      ...get().sessions.filter((session) => session.content !== text),
+      ...get().sessions.filter(
+        (session) => session.content.length !== text.length || session.content !== text,
+      ),
     ].slice(0, 12);
     persistSessions(sessions);
     const pdfChapters = kind === "pdf" ? detectChapters(pages) : [];
-    const textChapters = kind === "text" ? splitTextChapters(text) : [];
+    // Same fallback the reader uses: a long book whose headings the parser
+    // cannot see still gets divided, rather than arriving as one document that
+    // lays out in a single pass. Both sides must agree or `chapterCount` says
+    // zero while the reader is showing parts.
+    const declaredChapters = kind === "text" ? splitTextChapters(text) : [];
+    const textChapters =
+      kind === "text" && declaredChapters.length === 0
+        ? paginateLongText(text)
+        : declaredChapters;
     const chapterCount = kind === "pdf" ? pdfChapters.length : textChapters.length > 1 ? textChapters.length : 0;
     const initialPage =
       kind === "pdf" ? Math.min(pages.length, Math.max(1, meta?.pdfPage ?? 1)) : 0;
@@ -425,6 +544,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       pdfPageCount: kind === "pdf" ? pages.length : 0,
       chapterIndex,
       chapterCount,
+      // Only an explicit resume asks for a position inside a section; opening a
+      // book any other way starts at the top of it.
+      restoreTo:
+        typeof meta?.progress === "number" && Number.isFinite(meta.progress)
+          ? Math.min(1, Math.max(0, meta.progress))
+          : 0,
       reading: {
         ...EMPTY_READING,
         startedAt: Date.now(),
@@ -517,8 +642,34 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setProfile: (profile) => {
     try {
+      const before = get().profile;
       const next = persistAndApply(profile, get().mode);
-      set({ profile: next });
+
+      /**
+       * A hand-made change is evidence, so the engine hears about it.
+       *
+       * This is the strongest signal the app has and it used to be discarded:
+       * the engine learned only from the outcomes of its own suggestions, while
+       * a reader reaching over and softening the fixation themselves — a direct
+       * statement of preference — told it nothing at all.
+       *
+       * Direction decides the sign. Someone repeatedly *lowering* a setting is
+       * saying the engine's instinct to raise it is wrong for them, and reading
+       * only "they touched this lever" would take that as encouragement.
+       */
+      const stated = readPreference(before, next);
+      let adaptiveMemory = get().adaptiveMemory;
+      if (stated) {
+        const agrees = stated.direction === "up";
+        adaptiveMemory = learnFromPreference(
+          adaptiveMemory,
+          stated.rule,
+          agrees ? PREFERENCE_WEIGHT.agrees : PREFERENCE_WEIGHT.disagrees,
+        );
+        persistAdaptiveMemory(adaptiveMemory);
+      }
+
+      set({ profile: next, adaptiveMemory });
     } catch (error) {
       console.error(error);
     }
@@ -563,7 +714,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       reading.forwardSteps === (prev.forwardSteps ?? 0);
     const sameNeural = (reading.neuralEvents?.length ?? 0) === (prev.neuralEvents?.length ?? 0);
     if (sameProgress && sameWpm && samePauses && sameRereads && sameSkips && samePaused && sameWords && sameDwell && sameNeural) return;
-    const sessions = withSessionMetrics(state.sessions, state.text, reading, state.targetWpm);
+    // A PDF is divided by page and a text by part, and the two are counted
+    // separately — pass whichever one this book is actually using.
+    const section = state.pdfPageCount > 1 ? state.pdfPage : state.chapterCount > 1 ? state.chapterIndex : 0;
+    const sessions = withSessionMetrics(state.sessions, state.text, reading, state.targetWpm, section);
+
+    // Close the loop before choosing again: score any change already made
+    // against how reading has gone since, so a lever that did not help this
+    // reader loses ground to the alternatives.
+    const strain = measureReadingStrain({
+      wordCount: reading.wordCount,
+      wordsRead: reading.wordsRead,
+      progress: reading.progress,
+      elapsedActiveMs: reading.elapsedActiveMs,
+      currentWpm: reading.currentWpm,
+      targetWpm: state.targetWpm,
+      pauseCount: reading.pauses.length,
+      pauses: reading.pauses,
+      rereadCount: reading.rereads.length,
+      rereads: reading.rereads,
+      feel: state.readingFeel,
+    });
+    const adaptiveMemory = learnFromOutcome(state.adaptiveMemory, strain.peak, reading.wordsRead);
+
     const recommendation = refreshRecommendation(
       reading,
       state.targetWpm,
@@ -573,9 +746,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.recommendation,
       state.readingFeel,
       state.lockedSettings,
+      adaptiveMemory,
     );
-    set({ reading, sessions, recommendation });
-    const existing = state.sessions.find((session) => session.content === state.text);
+    set({ reading, sessions, recommendation, adaptiveMemory });
+    if (adaptiveMemory !== state.adaptiveMemory) persistAdaptiveMemory(adaptiveMemory);
+    // Length first: this runs on every progress tick, and comparing a 1MB
+    // book against a dozen stored books character-by-character is the kind of
+    // cost that only shows up once someone has actually used the app a while.
+    const existing = state.sessions.find(
+      (session) =>
+        session.content.length === state.text.length && session.content === state.text,
+    );
     const shouldPersist =
       !existing ||
       Math.abs((existing.progress ?? 0) - reading.progress) >= 0.05 ||
@@ -611,8 +792,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       const next = persistAndApply({ ...profile, theme: recommendation.recommendedValue }, get().mode);
       set({ profile: next });
     }
+    // Remember the strain this lever was reaching for, so its effect can be
+    // judged once the reader has had a few hundred words to feel it.
+    const reading = get().reading;
+    const strain = measureReadingStrain({
+      wordCount: reading.wordCount,
+      wordsRead: reading.wordsRead,
+      progress: reading.progress,
+      elapsedActiveMs: reading.elapsedActiveMs,
+      currentWpm: reading.currentWpm,
+      targetWpm: get().targetWpm,
+      pauseCount: reading.pauses.length,
+      pauses: reading.pauses,
+      rereadCount: reading.rereads.length,
+      rereads: reading.rereads,
+      feel: get().readingFeel,
+    });
+    const adaptiveMemory = noteApplied(
+      get().adaptiveMemory,
+      recommendation.rule,
+      strain.peak,
+      reading.wordsRead,
+    );
+    persistAdaptiveMemory(adaptiveMemory);
+
     set({
       recommendation: null,
+      adaptiveMemory,
       dismissedRules: [...get().dismissedRules, recommendation.rule],
       lastAdaptiveChange: {
         setting: recommendation.setting,
@@ -698,11 +904,70 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ savedProfiles });
   },
 
-  toggleHighlight: (lineIdx) => {
+  /**
+   * Mark a run of text.
+   *
+   * Overlapping marks are merged rather than stacked. Two highlights covering
+   * the same words would draw the stroke twice — visibly darker where they meet
+   * — and leave the reader with two entries in the list for one passage they
+   * marked once, sometimes by dragging over the edge of an earlier one.
+   */
+  addHighlight: (mark) => {
     const key = textKey(get().text);
     const current = get().highlights[key] ?? [];
-    const nextForKey = current.includes(lineIdx) ? current.filter((item) => item !== lineIdx) : [...current, lineIdx];
+
+    const sameLine = (item: Highlight) =>
+      item.lineIdx === mark.lineIdx && item.section === mark.section;
+    const overlaps = (item: Highlight) =>
+      sameLine(item) && item.start < mark.end && mark.start < item.end;
+
+    const touching = current.filter(overlaps);
+    const start = Math.min(mark.start, ...touching.map((item) => item.start));
+    const end = Math.max(mark.end, ...touching.map((item) => item.end));
+    // A note written against any of the merged marks is kept: it was a thought
+    // about this passage, and the passage is still here.
+    const note = touching.find((item) => item.note)?.note;
+
+    const merged: Highlight = {
+      lineIdx: mark.lineIdx,
+      section: mark.section,
+      start,
+      end,
+      text: mark.text.slice(0, 400),
+      note,
+      at: Date.now(),
+    };
+
+    const nextForKey = [...current.filter((item) => !overlaps(item)), merged];
     const highlights = { ...get().highlights, [key]: nextForKey };
+    writeLocal(HIGHLIGHTS_KEY, JSON.stringify(highlights));
+    set({ highlights });
+  },
+
+  removeHighlight: (lineIdx, section, start) => {
+    const key = textKey(get().text);
+    const current = get().highlights[key] ?? [];
+    const nextForKey = current.filter(
+      (item) => !(item.lineIdx === lineIdx && item.section === section && item.start === start),
+    );
+    if (nextForKey.length === current.length) return;
+    const highlights = { ...get().highlights, [key]: nextForKey };
+    writeLocal(HIGHLIGHTS_KEY, JSON.stringify(highlights));
+    set({ highlights });
+  },
+
+  annotateHighlight: (lineIdx, section, start, note) => {
+    const key = textKey(get().text);
+    const current = get().highlights[key];
+    if (!current) return;
+    const highlights = {
+      ...get().highlights,
+      [key]: current.map((item) =>
+        item.lineIdx === lineIdx && item.section === section && item.start === start
+          ? { ...item, note: note.trim() ? note.trim().slice(0, 600) : undefined }
+          : item,
+      ),
+    };
     writeLocal(HIGHLIGHTS_KEY, JSON.stringify(highlights));
     set({ highlights });
   },
@@ -778,6 +1043,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       BOOKMARKS_KEY,
       HIGHLIGHTS_KEY,
       CVD_KEY,
+      ADAPTIVE_MEMORY_KEY,
       "neurolens-coach",
       "neurolens-started",
       "neurolens-pointer-hint",
@@ -795,6 +1061,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       reading: EMPTY_READING,
       recommendation: null,
       dismissedRules: [],
+      adaptiveMemory: {},
       lastAdaptiveChange: null,
       lockedSettings: [],
       savedProfiles: [],

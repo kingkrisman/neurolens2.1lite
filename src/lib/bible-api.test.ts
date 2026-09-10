@@ -83,7 +83,10 @@ describe("bible-api.com references", () => {
     });
     assert.match(text, /^John 3:16/);
     assert.match(text, /World English Bible/);
-    assert.match(text, /16  For God so loved the world\./);
+    // `{2}` rather than two literal spaces: the double gap after the verse
+    // number is the thing being asserted, and two spaces in a row are
+    // invisible in review — easy to "fix" to one and silently weaken the test.
+    assert.match(text, /16 {2}For God so loved the world\./);
   });
 });
 

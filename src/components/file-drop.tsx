@@ -75,7 +75,7 @@ export function FileDrop({
             <LensLoader label="Parsing" />
           ) : (
             <>
-              <Upload size={14} />
+              <Upload size={14} className="icon-motion icon-rise" />
               Upload
             </>
           )}

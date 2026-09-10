@@ -1,12 +1,15 @@
 import { Command } from "cmdk";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "@/lib/prefers-reduced-motion";
-import { BookOpen, Eye, Library, Settings2, Sparkles } from "lucide-react";
+import { BookOpen, Eye, Highlighter, Library, Settings2, Sparkles } from "lucide-react";
 import { SAMPLE_TEXTS } from "@/lib/samples";
 import { FEATURED_PASSAGES } from "@/lib/bible";
 import { fetchPassage, passageToReaderText } from "@/lib/bible-api";
 import { remoteMessage } from "@/lib/remote";
 import { useAppStore } from "@/lib/store";
+import { searchBook } from "@/lib/book-search";
+import { splitTextChapters } from "@/lib/chapters";
+import { splitPdfPages } from "@/lib/pdf-pages";
 import { Kbd } from "@/components/ui/surfaces";
 import { NAMED_PRESETS, READING_PROFILES, TABS, type ReadingMode, type TabId } from "@/lib/types";
 import { easeOut, gsap, registerGsap, useGSAP } from "@/lib/gsap";
@@ -32,13 +35,34 @@ export function CommandPalette() {
   const setMode = useAppStore((s) => s.setMode);
   const applySavedProfile = useAppStore((s) => s.applySavedProfile);
   const savedProfiles = useAppStore((s) => s.savedProfiles);
+  const requestJump = useAppStore((s) => s.requestJump);
+  const sourceKind = useAppStore((s) => s.sourceKind);
   const reduce = useReducedMotion();
   const [shown, setShown] = useState(open);
+  const [query, setQuery] = useState("");
+
+  /**
+   * Search the open book from the same box as the commands.
+   *
+   * There were two searches with no relationship: this palette found views and
+   * profiles, while the reader's own find searched passages. A reader with a
+   * book open and a phrase in mind had to know which of the two would answer,
+   * and picking wrong returned nothing rather than saying so. Capped low
+   * because these results share the list with everything else — the reader's
+   * own find is still the place to go through every match.
+   */
+  const bookHits = useMemo(() => {
+    if (!open || !text || query.trim().length < 2) return [];
+    const sections =
+      sourceKind === "pdf" ? splitPdfPages(text) : splitTextChapters(text).map((chapter) => chapter.body);
+    return searchBook(sections.length ? sections : [text], query, { limit: 6 });
+  }, [open, text, query, sourceKind]);
   const veilRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) setShown(true);
+    else setQuery("");
   }, [open]);
 
   useGSAP(
@@ -104,14 +128,48 @@ export function CommandPalette() {
           <Command label="Command menu" className="text-sm">
           <Command.Input
             autoFocus
-            aria-label="Search commands"
-            placeholder="Go somewhere, open a chapter, or apply a profile"
+            value={query}
+            onValueChange={setQuery}
+            aria-label="Search commands and the open book"
+            placeholder={
+              text ? "Search this book, go somewhere, apply a profile" : "Go somewhere, open a chapter, or apply a profile"
+            }
             className="h-12 w-full border-b border-border bg-transparent px-4 text-sm outline-none placeholder:text-subtle"
           />
           <Command.List className="max-h-80 overflow-y-auto p-1.5">
             <Command.Empty className="px-3 py-6 text-center text-sm text-muted">
               Nothing matches.
             </Command.Empty>
+            {bookHits.length > 0 ? (
+              <Command.Group
+                heading="In this book"
+                className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-subtle"
+              >
+                {bookHits.map((hit) => (
+                  <Command.Item
+                    key={`hit-${hit.section}-${hit.lineIdx}-${hit.start}`}
+                    // cmdk filters on `value`; the passage text is what should
+                    // be matched against, not a synthetic id.
+                    value={`${hit.text} ${hit.section}`}
+                    onSelect={() => {
+                      setTab("read");
+                      requestJump(hit.section, hit.lineIdx);
+                      setOpen(false);
+                    }}
+                    className="flex cursor-pointer items-start gap-2 rounded-sm px-2 py-2 text-sm data-[selected=true]:bg-fg/6"
+                  >
+                    <Highlighter size={15} className="mt-0.5 shrink-0 text-muted" />
+                    <span className="line-clamp-2 leading-relaxed">
+                      {hit.text.slice(0, hit.start)}
+                      <mark className="rounded-xs bg-accent/25 text-fg">
+                        {hit.text.slice(hit.start, hit.end)}
+                      </mark>
+                      {hit.text.slice(hit.end)}
+                    </span>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            ) : null}
             <Command.Group
               heading="Navigate"
               className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-subtle"

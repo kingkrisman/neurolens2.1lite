@@ -56,6 +56,19 @@ export interface ReadingProfile {
   attentionFollow?: AttentionMode;
   focusBand?: 1 | 2 | 3;
   plainLanguage?: boolean;
+  /**
+   * Damp the motion that provokes vestibular symptoms, and anchor what is left.
+   *
+   * Distinct from `prefers-reduced-motion`, which is a blunt system-wide switch
+   * a reader may not want on everywhere. Motion sickness is provoked by a
+   * specific thing — large surfaces moving at a different rate from the frame
+   * around them — so this targets parallax, scroll-linked drift and the
+   * companion's travel, and leaves the small state-change animations that carry
+   * meaning.
+   */
+  motionCues?: boolean;
+  /** Whether Neuro, the companion, is present. */
+  companion?: boolean;
 }
 
 export interface SavedProfile {
@@ -63,6 +76,43 @@ export interface SavedProfile {
   name: string;
   profile: ReadingProfile;
   targetWpm: number;
+}
+
+/**
+ * A marked line, recorded with enough context to be found again.
+ *
+ * The original shape was a bare list of line indices keyed on the book. That
+ * could not survive the way long books are read: line numbers restart inside
+ * every chapter and every auto-paginated Part, so index 1000 named a different
+ * sentence in each of them, and marking one line lit up its twin in every other
+ * section. It also stored no text, which meant a highlight could be made but
+ * never listed or reviewed — write-only.
+ *
+ * `section` disambiguates which part the index belongs to, and `text` makes the
+ * highlight readable on its own, so it survives re-pagination and can be shown
+ * in a list away from the page it came from.
+ */
+export interface Highlight {
+  /** Line index, unique only within its own section. */
+  lineIdx: number;
+  /** Chapter, Part, or PDF page this was marked in. */
+  section: number;
+  /**
+   * Character offsets of the marked run inside that line's plain text.
+   *
+   * A highlight used to be the whole sentence, because the gesture was a click
+   * on the line and a click has no extent. Marking is a thing you do to a
+   * *phrase* — the clause that mattered, not the sentence that contained it —
+   * so the range has to be recorded, and the gesture that produces it has to be
+   * one that has a beginning and an end.
+   */
+  start: number;
+  end: number;
+  /** The marked run itself, so it can be listed away from the page. */
+  text: string;
+  /** An optional thought attached to this passage. */
+  note?: string;
+  at: number;
 }
 
 export interface Bookmark {
@@ -91,6 +141,14 @@ export interface Session {
   sourceId?: string;
   comprehension?: number | null;
   pattern?: ReadingPatternId;
+  /**
+   * Which part of the book was on screen, 1-based; absent for an undivided one.
+   *
+   * `progress` is a scroll fraction of whatever section is open, not of the
+   * book, so on its own it cannot say where a reader stopped — 30% could be
+   * Part 1 or Part 9. Recording the part is what makes resuming possible.
+   */
+  section?: number;
 }
 
 export const READING_PROFILES: Record<ReadingMode, ReadingProfile> = {

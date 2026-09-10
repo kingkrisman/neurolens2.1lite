@@ -178,3 +178,54 @@ export function chapterAtPage(chapters: ChapterSpan[], page: number): number {
   }
   return 0;
 }
+
+/** Above this, an unbroken text is long enough that paging it beats scrolling it. */
+const LONG_TEXT_WORDS = 12_000;
+/** Words per synthetic section — roughly ten minutes at an average pace. */
+const SECTION_WORDS = 2_500;
+
+/**
+ * Fallback pagination for a long text that declares no chapters.
+ *
+ * Plenty of Gutenberg plain-text files format their headings in a way
+ * `splitTextChapters` cannot recognise, and those books then arrive as one
+ * continuous document: every paragraph laid out, measured, and painted at once.
+ *
+ * This splits on paragraph boundaries only, and rejoins with the blank line it
+ * split on, so the text is paged without being rewritten — unlike
+ * `chunkByMinutes`, which collapses paragraphs into a single run and is a
+ * reading mode rather than a way to divide a book.
+ *
+ * Returns `[]` for anything short enough to read in one go, so the reader keeps
+ * its plain scrolling view when paging would only add navigation nobody needs.
+ */
+export function paginateLongText(text: string): TextChapter[] {
+  const source = text.replace(/\r\n/g, "\n").trim();
+  if (!source) return [];
+  if (source.split(/\s+/).length < LONG_TEXT_WORDS) return [];
+
+  const paragraphs = source.split(/\n{2,}/);
+  const sections: TextChapter[] = [];
+  let bucket: string[] = [];
+  let words = 0;
+
+  const flush = () => {
+    if (!bucket.length) return;
+    sections.push({ title: `Part ${sections.length + 1}`, body: bucket.join("\n\n") });
+    bucket = [];
+    words = 0;
+  };
+
+  for (const paragraph of paragraphs) {
+    const trimmed = paragraph.trim();
+    if (!trimmed) continue;
+    // Flush before adding, so a section ends on a paragraph boundary rather
+    // than overshooting by however long the next paragraph happens to be.
+    if (words && words + trimmed.split(/\s+/).length > SECTION_WORDS) flush();
+    bucket.push(trimmed);
+    words += trimmed.split(/\s+/).length;
+  }
+  flush();
+
+  return sections.length > 1 ? sections : [];
+}

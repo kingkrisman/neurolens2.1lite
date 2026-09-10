@@ -211,7 +211,12 @@ function tokenIdentityKey(token: string): string {
             .digest("base64url");
         }
       }
-    } catch {}
+    } catch {
+      // A token that will not parse is not an error worth reporting: the
+      // fallback below hashes the raw token, which is a valid key either way.
+      // Deliberately silent, and said so rather than leaving a bare `{}` that
+      // reads like an unfinished branch.
+    }
   }
   return createHash("sha256").update(token).digest("base64url");
 }

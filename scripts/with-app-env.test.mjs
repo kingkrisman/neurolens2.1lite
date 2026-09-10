@@ -26,6 +26,19 @@ function makeWorkspace(appEnvJson) {
   return root;
 }
 
+const CAN_SYMLINK = (() => {
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "symlink-probe-"));
+    symlinkSync(dir, join(dir, "link"), "dir");
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const SKIP_SYMLINK = CAN_SYMLINK
+  ? undefined
+  : { skip: "symlinks need elevation on this platform" };
+
 test("keeps VITE_-prefixed string entries", () => {
   assert.deepEqual(parseAppEnv('{"VITE_AUTH_ENABLED":"false"}'), {
     VITE_AUTH_ENABLED: "false",
@@ -113,7 +126,7 @@ test("a signal-killed command is never reported as success", async () => {
   );
 });
 
-test("the CLI still runs when invoked through a symlinked path", async () => {
+test("the CLI still runs when invoked through a symlinked path", SKIP_SYMLINK, async () => {
   // node realpaths import.meta.url but not process.argv[1], so a raw comparison
   // turns the wrapper into a no-op that exits 0 without starting anything.
   const link = join(mkdtempSync(join(tmpdir(), "app-env-link-")), "scripts");
