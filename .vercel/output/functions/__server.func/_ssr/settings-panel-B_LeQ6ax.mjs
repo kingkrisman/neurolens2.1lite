@@ -1,10 +1,10 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { u as require_react } from "../_libs/@floating-ui/react-dom+[...].mjs";
 import { b as require_jsx_runtime } from "../_libs/@radix-ui/react-accordion+[...].mjs";
-import { A as ScrollScene, G as PanelWell, U as Panel, W as PanelHeader, Y as cn, _ as FONT_CLASS, b as READING_PROFILES, k as PageEnter, p as Button, x as RHYTHM_CHOICES, y as NAMED_PRESETS } from "./router-BR13pP-z.mjs";
+import { A as ScrollScene, G as PanelWell, U as Panel, W as PanelHeader, Y as cn, _ as FONT_CLASS, b as READING_PROFILES, k as PageEnter, p as Button, x as RHYTHM_CHOICES, y as NAMED_PRESETS } from "./router-D73jI07j.mjs";
 import { n as toast } from "../_libs/sonner.mjs";
-import { A as SCHEME_TOKENS, C as Segmented, D as processBionicText, E as nearestFixationPreset, G as simulatedContrast, I as formatContrastRatio, J as textContrastLevel, L as hueDistinctionLost, O as CVD_HINTS, P as describePair, R as isHexColor, S as Label, T as Switch, U as normalizeHex, V as linearizeChannel, W as simulateHex, X as useAppStore, Y as uiContrastPass, a as requestMotionPermission, b as FIXATION_PRESETS, c as ContrastMeter, i as motionPermissionNeeded, l as SchemePicker, n as exportEverything, o as AccessibleBionic, r as exportHighlights, s as FontPicker, v as DEMO_SENTENCE, w as Slider, x as Input, z as isLargeText } from "./routes-DSsj-njg.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/settings-panel-DbotdRwz.js
+import { A as SCHEME_TOKENS, C as Segmented, D as processBionicText, E as nearestFixationPreset, G as simulatedContrast, I as formatContrastRatio, J as textContrastLevel, L as hueDistinctionLost, O as CVD_HINTS, P as describePair, R as isHexColor, S as Label, T as Switch, U as normalizeHex, V as linearizeChannel, W as simulateHex, X as useAppStore, Y as uiContrastPass, a as requestMotionPermission, b as FIXATION_PRESETS, c as ContrastMeter, i as motionPermissionNeeded, l as SchemePicker, n as exportEverything, o as AccessibleBionic, r as exportHighlights, s as FontPicker, v as DEMO_SENTENCE, w as Slider, x as Input, z as isLargeText } from "./routes-DL4eS--G.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/settings-panel-B_LeQ6ax.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var WCAG_22_READER = [

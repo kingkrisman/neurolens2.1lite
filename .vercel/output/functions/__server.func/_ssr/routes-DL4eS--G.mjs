@@ -5,7 +5,7 @@ import { n as gsapWithCSS, t as useGSAP } from "../_libs/gsap+gsap__react.mjs";
 import { a as isSkipJump, c as splitSentenceSpans, i as isSentenceBoundary, l as splitSentences$1, n as detectDisengagement, o as recapCacheKey, r as dismissReconnect, s as reconnectDismissed, t as buildLocalRecap, u as windowForModel } from "./reconnect-DdBhzL0O.mjs";
 import { _ as Link, v as useNavigate, y as useSearch } from "../_libs/@tanstack/react-router+[...].mjs";
 import { C as CircleHelp, D as ChevronLeft, E as ChevronRight, O as ChevronDown, S as Compass, T as ChevronsDown, _ as Languages, b as Download, d as Play, f as Pause, h as LockOpen, i as Upload, j as BookOpenText, k as Check, m as Lock, n as VolumeX, o as StickyNote, p as Maximize2, r as Volume2, s as SpellCheck, t as X, v as Highlighter, x as Copy } from "../_libs/lucide-react.mjs";
-import { $ as useReducedMotion, A as ScrollScene, B as Card, C as TINT_CLASS, E as GsapCount, G as PanelWell, H as Media, K as Progress, M as useInView, O as Magnetic, Q as scrollToId, S as TABS, T as Mark, U as Panel, V as Kbd, X as easeOut, Y as cn, Z as registerGsap, _ as FONT_CLASS, a as isStaleChunkError, b as READING_PROFILES, et as wordCount, g as FONT_CHOICES, h as DARK_SCHEMES, i as friendlyViewError, j as StaggerBlock, m as COLOR_SCHEMES, o as reloadView, p as Button, q as Separator, r as TabErrorBoundary, v as FONT_GROUPS, w as __exportAll, x as RHYTHM_CHOICES, y as NAMED_PRESETS, z as Badge } from "./router-BR13pP-z.mjs";
+import { $ as useReducedMotion, A as ScrollScene, B as Card, C as TINT_CLASS, E as GsapCount, G as PanelWell, H as Media, K as Progress, M as useInView, O as Magnetic, Q as scrollToId, S as TABS, T as Mark, U as Panel, V as Kbd, X as easeOut, Y as cn, Z as registerGsap, _ as FONT_CLASS, a as isStaleChunkError, b as READING_PROFILES, et as wordCount, g as FONT_CHOICES, h as DARK_SCHEMES, i as friendlyViewError, j as StaggerBlock, m as COLOR_SCHEMES, o as reloadView, p as Button, q as Separator, r as TabErrorBoundary, v as FONT_GROUPS, w as __exportAll, x as RHYTHM_CHOICES, y as NAMED_PRESETS, z as Badge } from "./router-D73jI07j.mjs";
 import { t as create } from "../_libs/zustand.mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
@@ -17,7 +17,7 @@ import { t as Icon } from "../_libs/iconify__react.mjs";
 import { a as DialogOverlay$1, i as DialogDescription$1, o as DialogPortal, r as DialogContent$1, s as DialogTitle$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
 import { a as Trigger$1, i as Root3, n as Portal, r as Provider, t as Content2$2 } from "../_libs/@radix-ui/react-tooltip+[...].mjs";
 import { t as Drawer } from "../_libs/vaul.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/store-B3bEgepx.js
+//#region node_modules/.nitro/vite/services/ssr/assets/store-C9-3PwSY.js
 /**
 * WCAG 2.2 contrast (relative luminance, SC 1.4.3 / 1.4.6 / 1.4.11).
 *
@@ -3060,7 +3060,7 @@ function processBionicText(text, strength = .5, rhythmOverride = false) {
 	}).join("");
 }
 //#endregion
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-DSsj-njg.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-DL4eS--G.js
 var SAMPLE_TEXTS = [
 	{
 		title: "Academic abstract",
@@ -9670,6 +9670,8 @@ var NEURAL_KINDS = [
 function asNeuralKind(value) {
 	return typeof value === "string" && NEURAL_KINDS.includes(value) ? value : null;
 }
+/** How long after a book opens its movement is the app's, not the reader's. */
+var SETTLE_MS = 1500;
 function useReadingTracker(scrollRef, wordTotal) {
 	const reportReading = useAppStore((s) => s.reportReading);
 	const tab = useAppStore((s) => s.tab);
@@ -9694,10 +9696,24 @@ function useReadingTracker(scrollRef, wordTotal) {
 	const neuralEvents = (0, import_react.useRef)([]);
 	const lastFlush = (0, import_react.useRef)(0);
 	const lastText = (0, import_react.useRef)(text);
+	/**
+	* When this book opened. Movement before it settles is the app placing the
+	* reader, not the reader reading.
+	*
+	* Resuming scrolls straight to where someone stopped, and that scroll is
+	* indistinguishable, at this layer, from a reader hurling themselves a third
+	* of the way into the book. Recorded as a skip it both says "Jumping ahead"
+	* to someone who did nothing of the sort and teaches the adaptive engine from
+	* a movement the app made on their behalf. A window rather than a one-shot
+	* flag because laying the text out emits scroll events of its own before the
+	* restore lands, and the first of those would otherwise spend the exemption.
+	*/
+	const openedAt = (0, import_react.useRef)(Date.now());
 	(0, import_react.useEffect)(() => {
 		const stored = useAppStore.getState().reading;
 		if (lastText.current !== text) {
 			lastText.current = text;
+			openedAt.current = Date.now();
 			highWater.current = 0;
 			lastProgress.current = 0;
 			lastMeaningfulAt.current = Date.now();
@@ -9793,6 +9809,15 @@ function useReadingTracker(scrollRef, wordTotal) {
 			const progress = remaining > 1 ? Math.min(1, Math.max(0, node.scrollTop / remaining)) : 1;
 			const previous = lastProgress.current;
 			if (!isMeaningfulProgressChange(previous, progress)) return;
+			if (Date.now() - openedAt.current < SETTLE_MS) {
+				lastProgress.current = progress;
+				if (progress > highWater.current) highWater.current = progress;
+				lastProgressAt.current = Date.now();
+				lastMeaningfulAt.current = Date.now();
+				endPause();
+				flush(true);
+				return;
+			}
 			const durationMs = Date.now() - lastProgressAt.current;
 			lastProgressAt.current = Date.now();
 			const recordedPause = endPause();
@@ -13107,12 +13132,12 @@ function lazyView(load, exportName) {
 		}
 	});
 }
-var Library$1 = lazyView(() => import("./library-B56hBV3p.mjs"), "Library");
-var Insights = lazyView(() => import("./insights-C--JBv-W.mjs"), "Insights");
-var SettingsPanel = lazyView(() => import("./settings-panel-DbotdRwz.mjs"), "SettingsPanel");
+var Library$1 = lazyView(() => import("./library-CRTUjqPr.mjs"), "Library");
+var Insights = lazyView(() => import("./insights-CsgUSa2p.mjs"), "Insights");
+var SettingsPanel = lazyView(() => import("./settings-panel-B_LeQ6ax.mjs"), "SettingsPanel");
 var CommandPalette = (0, import_react.lazy)(async () => {
 	try {
-		return { default: (await import("./command-palette-cJmNBFvJ.mjs")).CommandPalette };
+		return { default: (await import("./command-palette-CRMjvMgK.mjs")).CommandPalette };
 	} catch {
 		return { default: function PaletteUnavailable() {
 			return null;

@@ -1,4 +1,4 @@
-//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-2lqFJkqm.js
+//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-BON7g8-N.js
 var tsrStartManifest = () => ({ routes: {
 	__root__: {
 		filePath: "C:/Users/Prof. Afolabi/Desktop/nl5/neurolens2.1lite/src/routes/__root.tsx",
@@ -11,31 +11,31 @@ var tsrStartManifest = () => ({ routes: {
 			"/api/gutendex/$",
 			"/api/openlibrary/$"
 		],
-		preloads: ["/assets/index-DN8Rrc5B.js", "/assets/gsap-DGz63K7W.js"],
+		preloads: ["/assets/index-DGJwwWjX.js", "/assets/gsap-DGz63K7W.js"],
 		scripts: [{ attrs: {
 			type: "module",
 			async: !0,
-			src: "/assets/index-DN8Rrc5B.js"
+			src: "/assets/index-DGJwwWjX.js"
 		} }]
 	},
 	"/": {
 		filePath: "C:/Users/Prof. Afolabi/Desktop/nl5/neurolens2.1lite/src/routes/index.tsx",
 		children: void 0,
 		preloads: [
-			"/assets/routes-BBYNRc2O.js",
-			"/assets/dist-D8hsqkZb.js",
-			"/assets/dist-CWcPTCUT.js"
+			"/assets/routes-BLi06onn.js",
+			"/assets/dist-B6AEhE3R.js",
+			"/assets/dist-kh3oP9Ma.js"
 		]
 	},
 	"/privacy": {
 		filePath: "C:/Users/Prof. Afolabi/Desktop/nl5/neurolens2.1lite/src/routes/privacy.tsx",
 		children: void 0,
-		preloads: ["/assets/privacy-Hz8WhP0U.js"]
+		preloads: ["/assets/privacy-hc2l5JI4.js"]
 	},
 	"/thank-you": {
 		filePath: "C:/Users/Prof. Afolabi/Desktop/nl5/neurolens2.1lite/src/routes/thank-you.tsx",
 		children: void 0,
-		preloads: ["/assets/thank-you-LN0KKZ2E.js"]
+		preloads: ["/assets/thank-you-CgHFi2vC.js"]
 	}
 } });
 //#endregion

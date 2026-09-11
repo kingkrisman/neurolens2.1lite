@@ -2,12 +2,12 @@ import { i as __toESM } from "../_runtime.mjs";
 import { u as require_react } from "../_libs/@floating-ui/react-dom+[...].mjs";
 import { b as require_jsx_runtime } from "../_libs/@radix-ui/react-accordion+[...].mjs";
 import { E as ChevronRight } from "../_libs/lucide-react.mjs";
-import { A as ScrollScene, D as GsapStagger, G as PanelWell, H as Media, U as Panel, W as PanelHeader, et as wordCount, k as PageEnter, p as Button } from "./router-BR13pP-z.mjs";
+import { A as ScrollScene, D as GsapStagger, G as PanelWell, H as Media, U as Panel, W as PanelHeader, et as wordCount, k as PageEnter, p as Button } from "./router-D73jI07j.mjs";
 import { n as toast } from "../_libs/sonner.mjs";
-import { B as leverOf, F as evaluateScheme, H as measureReadingStrain, I as formatContrastRatio, M as bestContrastTheme, N as classifyReading, X as useAppStore, g as PatternPanel, h as Companion, j as TRUST, k as PATTERN_META, y as SAMPLE_TEXTS } from "./routes-DSsj-njg.mjs";
+import { B as leverOf, F as evaluateScheme, H as measureReadingStrain, I as formatContrastRatio, M as bestContrastTheme, N as classifyReading, X as useAppStore, g as PatternPanel, h as Companion, j as TRUST, k as PATTERN_META, y as SAMPLE_TEXTS } from "./routes-DL4eS--G.mjs";
 import { t as NumberFlow } from "../_libs/number-flow+number-flow__react.mjs";
 import { i as ResponsiveContainer, n as XAxis, r as Bar, t as BarChart } from "../_libs/recharts+[...].mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/insights-C--JBv-W.js
+//#region node_modules/.nitro/vite/services/ssr/assets/insights-CsgUSa2p.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var LEVER_LABEL$1 = {

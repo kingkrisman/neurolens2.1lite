@@ -11,6 +11,9 @@ function asNeuralKind(value: unknown): NeuralKind | null {
   return typeof value === "string" && (NEURAL_KINDS as string[]).includes(value) ? (value as NeuralKind) : null;
 }
 
+/** How long after a book opens its movement is the app's, not the reader's. */
+const SETTLE_MS = 1_500;
+
 export function useReadingTracker(
   scrollRef: RefObject<HTMLDivElement | null>,
   wordTotal: number,
@@ -39,11 +42,25 @@ export function useReadingTracker(
   const neuralEvents = useRef<NeuralEvent[]>([]);
   const lastFlush = useRef(0);
   const lastText = useRef(text);
+  /**
+   * When this book opened. Movement before it settles is the app placing the
+   * reader, not the reader reading.
+   *
+   * Resuming scrolls straight to where someone stopped, and that scroll is
+   * indistinguishable, at this layer, from a reader hurling themselves a third
+   * of the way into the book. Recorded as a skip it both says "Jumping ahead"
+   * to someone who did nothing of the sort and teaches the adaptive engine from
+   * a movement the app made on their behalf. A window rather than a one-shot
+   * flag because laying the text out emits scroll events of its own before the
+   * restore lands, and the first of those would otherwise spend the exemption.
+   */
+  const openedAt = useRef(Date.now());
 
   useEffect(() => {
     const stored = useAppStore.getState().reading;
     if (lastText.current !== text) {
       lastText.current = text;
+      openedAt.current = Date.now();
       highWater.current = 0;
       lastProgress.current = 0;
       lastMeaningfulAt.current = Date.now();
@@ -146,6 +163,19 @@ export function useReadingTracker(
       const progress = remaining > 1 ? Math.min(1, Math.max(0, node.scrollTop / remaining)) : 1;
       const previous = lastProgress.current;
       if (!isMeaningfulProgressChange(previous, progress)) {
+        return;
+      }
+
+      if (Date.now() - openedAt.current < SETTLE_MS) {
+        // Where the book opened, whether that is the top or a restored
+        // position. Adopt it as the baseline; the reader's own movement is
+        // everything measured after this point.
+        lastProgress.current = progress;
+        if (progress > highWater.current) highWater.current = progress;
+        lastProgressAt.current = Date.now();
+        lastMeaningfulAt.current = Date.now();
+        endPause();
+        flush(true);
         return;
       }
 

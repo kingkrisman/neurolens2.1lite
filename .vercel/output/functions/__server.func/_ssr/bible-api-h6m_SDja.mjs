@@ -1,4 +1,4 @@
-import { F as fetchJson, I as isAbortError, N as RemoteError, P as asRemoteError } from "./router-BR13pP-z.mjs";
+import { F as fetchJson, I as isAbortError, N as RemoteError, P as asRemoteError } from "./router-D73jI07j.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/bible-api-h6m_SDja.js
 function b(name, testament, chapters) {
 	return {
