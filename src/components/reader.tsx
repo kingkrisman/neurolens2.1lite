@@ -927,11 +927,20 @@ export function Reader() {
           {chaptered && chapterIndex > 0 && !titlePage ? (
             <h2 className="mb-6 font-serif text-3xl">{chapters[chapterIndex - 1]?.title}</h2>
           ) : null}
-          {paged ? <PdfPageCanvas page={pdfPage} /> : null}
+          {/*
+            The reader's job is the reformatted text, so the book's own page is
+            not drawn alongside it — printing both put the original PDF on top
+            of the very text it was extracted from, which is the layout the
+            reader exists to replace. A page with no text at all is the one
+            exception: there the scan is the only thing there is to show.
+          */}
           {paged && blocks.length === 0 ? (
-            <p className="mb-6 text-sm leading-relaxed text-muted">
-              This page is an image. The drawing is above; there isn’t selectable text to format.
-            </p>
+            <>
+              <PdfPageCanvas page={pdfPage} />
+              <p className="mb-6 text-sm leading-relaxed text-muted">
+                This page is a picture, shown as the book printed it — there is no text on it to reformat.
+              </p>
+            </>
           ) : null}
           {blocks.map((block, blockIndex) => {
             const renderSentences = (itemIndex = 0) => {
