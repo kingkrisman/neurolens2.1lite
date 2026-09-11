@@ -1,4 +1,5 @@
 import { joinPdfPages } from "./pdf-pages.ts";
+import { textFromItems } from "./pdf-text.ts";
 import { rememberPdfDocument } from "./pdf-session.ts";
 
 export interface ProcessedDocument {
@@ -10,6 +11,8 @@ export interface ProcessedDocument {
     wordCount: number;
     estimatedReadTime: number;
     hasImages?: boolean;
+    /** Pages beyond the extraction cap that were left out, if any. */
+    droppedPages?: number;
   };
 }
 
@@ -108,8 +111,20 @@ async function processPdf(file: File): Promise<ProcessedDocument> {
   // and then pdf.js throws outside React's try/catch.
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-  const raw = await file.arrayBuffer();
-  const data = new Uint8Array(raw.slice(0));
+  let raw: ArrayBuffer;
+  try {
+    raw = await file.arrayBuffer();
+  } catch {
+    // The common one on a phone: the file lives in iCloud and has not been
+    // downloaded to the device, so reading it fails before any parsing starts.
+    // Unwrapped, this surfaced as a raw NotReadableError with no advice in it.
+    throw new Error("Could not open that file. If it is stored in the cloud, download it to this device first.");
+  }
+  // A view, not a copy. `slice(0)` duplicated the whole file, so a 20 MB book
+  // needed 40 MB before pdf.js had allocated anything of its own — which is
+  // how an upload dies on a phone rather than failing with a message. Nothing
+  // reads `raw` afterwards, so pdf.js is free to take the buffer.
+  const data = new Uint8Array(raw);
 
   return withPdfErrorsSilenced(async () => {
     let pdf: Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>;
@@ -145,11 +160,11 @@ async function processPdf(file: File): Promise<ProcessedDocument> {
           }
         }
         const content = await page.getTextContent();
-        const strings = content.items
-          .map((item) => ("str" in item ? item.str : ""))
-          .join(" ")
-          .replace(/\s+/g, " ")
-          .trim();
+        // Rebuilt from the runs' own geometry. Joining them with a space and
+        // flattening the whitespace put spaces inside words and ran headings
+        // into the paragraph beneath them.
+        // `items` also carries marked-content markers, which hold no text.
+        const strings = textFromItems(content.items.flatMap((item) => ("str" in item ? [item] : [])));
         if (charBudget <= 0) {
           pageTexts.push("");
           continue;
@@ -164,11 +179,15 @@ async function processPdf(file: File): Promise<ProcessedDocument> {
 
     rememberPdfDocument(pdf);
 
-    const extracted = pageTexts.join(" ").trim();
+    const extracted = pageTexts.join("\n\n").trim();
     const name = fileName(file);
     const joined = joinPdfPages(pageTexts);
     const words = extracted ? extracted.split(/\s+/).length : 0;
-    const summary = summarize(extracted || name, titleFrom(name, /\.pdf$/i), "PDF", pdf.numPages);
+    // The page count of what was actually read, not of the file. Reporting the
+    // file's total while holding only the first two hundred pages made the app
+    // claim content it did not have.
+    const summary = summarize(extracted || name, titleFrom(name, /\.pdf$/i), "PDF", pages);
+    const droppedPages = Math.max(0, pdf.numPages - pages);
     return {
       ...summary,
       content: joined,
@@ -177,6 +196,7 @@ async function processPdf(file: File): Promise<ProcessedDocument> {
         wordCount: words,
         estimatedReadTime: Math.max(1, Math.ceil((words || pages * 80) / 200)),
         hasImages,
+        droppedPages,
       },
     };
   });

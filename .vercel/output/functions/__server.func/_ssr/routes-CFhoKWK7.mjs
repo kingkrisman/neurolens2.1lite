@@ -5,7 +5,7 @@ import { n as gsapWithCSS, t as useGSAP } from "../_libs/gsap+gsap__react.mjs";
 import { a as isSkipJump, c as splitSentenceSpans, i as isSentenceBoundary, l as splitSentences$1, n as detectDisengagement, o as recapCacheKey, r as dismissReconnect, s as reconnectDismissed, t as buildLocalRecap, u as windowForModel } from "./reconnect-DdBhzL0O.mjs";
 import { _ as Link, v as useNavigate, y as useSearch } from "../_libs/@tanstack/react-router+[...].mjs";
 import { C as CircleHelp, D as ChevronLeft, E as ChevronRight, O as ChevronDown, S as Compass, T as ChevronsDown, _ as Languages, b as Download, d as Play, f as Pause, h as LockOpen, i as Upload, j as BookOpenText, k as Check, m as Lock, n as VolumeX, o as StickyNote, p as Maximize2, r as Volume2, s as SpellCheck, t as X, v as Highlighter, x as Copy } from "../_libs/lucide-react.mjs";
-import { $ as useReducedMotion, A as ScrollScene, B as Card, C as TINT_CLASS, E as GsapCount, G as PanelWell, H as Media, K as Progress, M as useInView, O as Magnetic, Q as scrollToId, S as TABS, T as Mark, U as Panel, V as Kbd, X as easeOut, Y as cn, Z as registerGsap, _ as FONT_CLASS, a as isStaleChunkError, b as READING_PROFILES, et as wordCount, g as FONT_CHOICES, h as DARK_SCHEMES, i as friendlyViewError, j as StaggerBlock, m as COLOR_SCHEMES, o as reloadView, p as Button, q as Separator, r as TabErrorBoundary, v as FONT_GROUPS, w as __exportAll, x as RHYTHM_CHOICES, y as NAMED_PRESETS, z as Badge } from "./router-D73jI07j.mjs";
+import { $ as useReducedMotion, A as ScrollScene, B as Card, C as TINT_CLASS, E as GsapCount, G as PanelWell, H as Media, K as Progress, M as useInView, O as Magnetic, Q as scrollToId, S as TABS, T as Mark, U as Panel, V as Kbd, X as easeOut, Y as cn, Z as registerGsap, _ as FONT_CLASS, a as isStaleChunkError, b as READING_PROFILES, et as wordCount, g as FONT_CHOICES, h as DARK_SCHEMES, i as friendlyViewError, j as StaggerBlock, m as COLOR_SCHEMES, o as reloadView, p as Button, q as Separator, r as TabErrorBoundary, v as FONT_GROUPS, w as __exportAll, x as RHYTHM_CHOICES, y as NAMED_PRESETS, z as Badge } from "./router-DspHHMnI.mjs";
 import { t as create } from "../_libs/zustand.mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
@@ -17,7 +17,7 @@ import { t as Icon } from "../_libs/iconify__react.mjs";
 import { a as DialogOverlay$1, i as DialogDescription$1, o as DialogPortal, r as DialogContent$1, s as DialogTitle$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
 import { a as Trigger$1, i as Root3, n as Portal, r as Provider, t as Content2$2 } from "../_libs/@radix-ui/react-tooltip+[...].mjs";
 import { t as Drawer } from "../_libs/vaul.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/store-C9-3PwSY.js
+//#region node_modules/.nitro/vite/services/ssr/assets/store-PRmB33Ox.js
 /**
 * WCAG 2.2 contrast (relative luminance, SC 1.4.3 / 1.4.6 / 1.4.11).
 *
@@ -3060,7 +3060,7 @@ function processBionicText(text, strength = .5, rhythmOverride = false) {
 	}).join("");
 }
 //#endregion
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-DL4eS--G.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-CFhoKWK7.js
 var SAMPLE_TEXTS = [
 	{
 		title: "Academic abstract",
@@ -3824,7 +3824,17 @@ function LensLoader({ label = "Loading", className }) {
 		}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label })]
 	});
 }
-var ACCEPT = ".pdf,.txt,.md,application/pdf,text/plain,text/markdown";
+/**
+* What the picker will offer.
+*
+* iOS resolves each token to a UTI and greys out every file it cannot map, so
+* `text/markdown` — which has no UTI — could leave a phone showing a Files
+* browser where nothing is selectable. Extensions first, then the two MIME
+* types iOS actually knows, then `text/*` as the catch-all for the plain-text
+* formats it reports under various names. The processor validates properly
+* once a file arrives; this list only decides what can be tapped.
+*/
+var ACCEPT = ".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/*";
 function FileDrop({ onFile, busy = false, compact = false, children }) {
 	const inputRef = (0, import_react.useRef)(null);
 	const [over, setOver] = (0, import_react.useState)(false);
@@ -3887,6 +3897,125 @@ function FileDrop({ onFile, busy = false, compact = false, children }) {
 		className: cn("flex h-24 w-full cursor-pointer items-center justify-center rounded-xl bg-surface text-sm shadow-border", over && "bg-fg/6"),
 		children: busy ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LensLoader, { label: "Parsing" }) : children ?? "Drop a PDF or text file here"
 	})] });
+}
+/**
+* A gap wider than this share of the font size is a real space.
+*
+* Tight enough to survive the loose tracking in a heading, wide enough not to
+* invent a space out of ordinary kerning.
+*/
+var SPACE_RATIO = .22;
+/** A line further from the last one than this multiple of the norm starts a paragraph. */
+var PARAGRAPH_GAP = 1.45;
+/** A font-size change this large is a heading meeting body text. */
+var SIZE_JUMP = .25;
+function num(value) {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function itemX(item) {
+	return num(item.transform?.[4]);
+}
+function itemY(item) {
+	return num(item.transform?.[5]);
+}
+function itemSize(item) {
+	return num(item.height) ?? Math.abs(num(item.transform?.[3]) ?? 0);
+}
+/** Group runs into visual lines, inserting spaces only where the geometry wants one. */
+function linesFrom(items) {
+	const lines = [];
+	let buf = "";
+	let y = null;
+	let size = 0;
+	let endX = null;
+	function flush() {
+		const text = buf.replace(/[^\S\n]+/g, " ").trim();
+		if (text) lines.push({
+			text,
+			y: y ?? 0,
+			size
+		});
+		buf = "";
+		y = null;
+		size = 0;
+		endX = null;
+	}
+	for (const item of items) {
+		const str = typeof item.str === "string" ? item.str : "";
+		if (str) {
+			const x = itemX(item);
+			const height = itemSize(item);
+			if (!buf) {
+				y = itemY(item);
+				size = height;
+			} else if (endX != null && x != null) {
+				const reference = size || height || 10;
+				if (x - endX > reference * SPACE_RATIO && !/\s$/.test(buf) && !/^\s/.test(str)) buf += " ";
+			}
+			buf += str;
+			if (height > size) size = height;
+			endX = x != null ? x + (num(item.width) ?? 0) : null;
+		}
+		if (item.hasEOL) flush();
+	}
+	flush();
+	return lines;
+}
+function median(values) {
+	if (!values.length) return 0;
+	const sorted = [...values].sort((a, b) => a - b);
+	const mid = Math.floor(sorted.length / 2);
+	return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+/**
+* Whether a new line starts a new paragraph, or continues the one above.
+*
+* Leading is the tell. Lines inside a paragraph sit one leading apart; a
+* paragraph break, a heading, or a scene break opens that up. Measured against
+* this page's own median rather than a fixed number, because leading is a
+* choice each book makes.
+*/
+function startsParagraph(prev, line, normalGap) {
+	const gap = Math.abs(prev.y - line.y);
+	if (normalGap > 0 && gap > normalGap * PARAGRAPH_GAP) return true;
+	const base = Math.max(prev.size, line.size);
+	return base > 0 && Math.abs(prev.size - line.size) > base * SIZE_JUMP;
+}
+/**
+* Join the lines of a paragraph back into flowing prose.
+*
+* The reader re-wraps text to its own measure, so a PDF's hard line breaks are
+* not worth keeping — kept, they would lock the reader to the column width of
+* a book they are not holding. A word broken across a line break rejoins
+* without its hyphen.
+*/
+function appendLine(paragraph, line) {
+	if (!paragraph) return line;
+	if (/[A-Za-zÀ-ɏ][-‐­]$/.test(paragraph)) return paragraph.replace(/[-‐­]$/, "") + line;
+	return `${paragraph} ${line}`;
+}
+/** Readable text for one page: paragraphs separated by a blank line. */
+function textFromItems(items) {
+	const lines = linesFrom(items ?? []);
+	if (!lines.length) return "";
+	const gaps = [];
+	for (let i = 1; i < lines.length; i += 1) {
+		const gap = Math.abs(lines[i - 1].y - lines[i].y);
+		if (gap > .5) gaps.push(gap);
+	}
+	const normalGap = median(gaps);
+	const paragraphs = [];
+	let current = lines[0].text;
+	for (let i = 1; i < lines.length; i += 1) {
+		const prev = lines[i - 1];
+		const line = lines[i];
+		if (startsParagraph(prev, line, normalGap)) {
+			paragraphs.push(current);
+			current = line.text;
+		} else current = appendLine(current, line.text);
+	}
+	paragraphs.push(current);
+	return paragraphs.map((paragraph) => paragraph.trim()).filter(Boolean).join("\n\n");
 }
 var MAX_EXTRACT_CHARS = 4e5;
 function summarize(content, title, format, pageCount) {
@@ -3959,8 +4088,13 @@ async function processPdf(file) {
 		throw new Error("Could not load the PDF reader. Paste the text instead.");
 	}
 	pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-	const raw = await file.arrayBuffer();
-	const data = new Uint8Array(raw.slice(0));
+	let raw;
+	try {
+		raw = await file.arrayBuffer();
+	} catch {
+		throw new Error("Could not open that file. If it is stored in the cloud, download it to this device first.");
+	}
+	const data = new Uint8Array(raw);
 	return withPdfErrorsSilenced(async () => {
 		let pdf;
 		try {
@@ -3988,7 +4122,7 @@ async function processPdf(file) {
 				} catch {
 					hasImages = true;
 				}
-				const strings = (await page.getTextContent()).items.map((item) => "str" in item ? item.str : "").join(" ").replace(/\s+/g, " ").trim();
+				const strings = textFromItems((await page.getTextContent()).items.flatMap((item) => "str" in item ? [item] : []));
 				if (charBudget <= 0) {
 					pageTexts.push("");
 					continue;
@@ -4001,11 +4135,12 @@ async function processPdf(file) {
 			throw new Error("Could not read that PDF. Try a text file, or paste the contents.");
 		}
 		rememberPdfDocument(pdf);
-		const extracted = pageTexts.join(" ").trim();
+		const extracted = pageTexts.join("\n\n").trim();
 		const name = fileName(file);
 		const joined = joinPdfPages(pageTexts);
 		const words = extracted ? extracted.split(/\s+/).length : 0;
-		const summary = summarize(extracted || name, titleFrom(name, /\.pdf$/i), "PDF", pdf.numPages);
+		const summary = summarize(extracted || name, titleFrom(name, /\.pdf$/i), "PDF", pages);
+		const droppedPages = Math.max(0, pdf.numPages - pages);
 		return {
 			...summary,
 			content: joined,
@@ -4013,7 +4148,8 @@ async function processPdf(file) {
 				...summary.metadata,
 				wordCount: words,
 				estimatedReadTime: Math.max(1, Math.ceil((words || pages * 80) / 200)),
-				hasImages
+				hasImages,
+				droppedPages
 			}
 		};
 	});
@@ -5180,7 +5316,9 @@ function Landing() {
 				wordCount: doc.metadata.wordCount,
 				readTime: doc.metadata.estimatedReadTime
 			});
-			toast.success("Document ready");
+			const dropped = doc.metadata.droppedPages ?? 0;
+			if (dropped > 0) toast.warning(`Read the first ${doc.metadata.pageCount} pages. The last ${dropped} were left out — this reader caps long PDFs.`);
+			else toast.success("Document ready");
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Could not read that file.");
 			toast.error(err instanceof Error ? err.message : "Could not read that file");
@@ -13132,12 +13270,12 @@ function lazyView(load, exportName) {
 		}
 	});
 }
-var Library$1 = lazyView(() => import("./library-CRTUjqPr.mjs"), "Library");
-var Insights = lazyView(() => import("./insights-CsgUSa2p.mjs"), "Insights");
-var SettingsPanel = lazyView(() => import("./settings-panel-B_LeQ6ax.mjs"), "SettingsPanel");
+var Library$1 = lazyView(() => import("./library-nkbSmSHV.mjs"), "Library");
+var Insights = lazyView(() => import("./insights-BDVQ-ZEq.mjs"), "Insights");
+var SettingsPanel = lazyView(() => import("./settings-panel-Cg8_h3El.mjs"), "SettingsPanel");
 var CommandPalette = (0, import_react.lazy)(async () => {
 	try {
-		return { default: (await import("./command-palette-CRMjvMgK.mjs")).CommandPalette };
+		return { default: (await import("./command-palette-CaJV98tp.mjs")).CommandPalette };
 	} catch {
 		return { default: function PaletteUnavailable() {
 			return null;

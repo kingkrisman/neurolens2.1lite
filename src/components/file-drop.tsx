@@ -4,7 +4,17 @@ import { Button } from "@/components/ui/button";
 import { LensLoader } from "@/components/ui/loader";
 import { cn } from "@/lib/utils";
 
-const ACCEPT = ".pdf,.txt,.md,application/pdf,text/plain,text/markdown";
+/**
+ * What the picker will offer.
+ *
+ * iOS resolves each token to a UTI and greys out every file it cannot map, so
+ * `text/markdown` — which has no UTI — could leave a phone showing a Files
+ * browser where nothing is selectable. Extensions first, then the two MIME
+ * types iOS actually knows, then `text/*` as the catch-all for the plain-text
+ * formats it reports under various names. The processor validates properly
+ * once a file arrives; this list only decides what can be tapped.
+ */
+const ACCEPT = ".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/*";
 
 export function FileDrop({
   onFile,
