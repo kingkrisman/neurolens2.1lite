@@ -5,7 +5,7 @@ import { n as gsapWithCSS, t as useGSAP } from "../_libs/gsap+gsap__react.mjs";
 import { a as isSkipJump, c as splitSentenceSpans, i as isSentenceBoundary, l as splitSentences$1, n as detectDisengagement, o as recapCacheKey, r as dismissReconnect, s as reconnectDismissed, t as buildLocalRecap, u as windowForModel } from "./reconnect-DdBhzL0O.mjs";
 import { _ as Link, v as useNavigate, y as useSearch } from "../_libs/@tanstack/react-router+[...].mjs";
 import { C as CircleHelp, D as ChevronLeft, E as ChevronRight, O as ChevronDown, S as Compass, T as ChevronsDown, _ as Languages, b as Download, d as Play, f as Pause, h as LockOpen, i as Upload, j as BookOpenText, k as Check, m as Lock, n as VolumeX, o as StickyNote, p as Maximize2, r as Volume2, s as SpellCheck, t as X, v as Highlighter, x as Copy } from "../_libs/lucide-react.mjs";
-import { $ as useReducedMotion, A as ScrollScene, B as Card, C as TINT_CLASS, E as GsapCount, G as PanelWell, H as Media, K as Progress, M as useInView, O as Magnetic, Q as scrollToId, S as TABS, T as Mark, U as Panel, V as Kbd, X as easeOut, Y as cn, Z as registerGsap, _ as FONT_CLASS, a as isStaleChunkError, b as READING_PROFILES, et as wordCount, g as FONT_CHOICES, h as DARK_SCHEMES, i as friendlyViewError, j as StaggerBlock, m as COLOR_SCHEMES, o as reloadView, p as Button, q as Separator, r as TabErrorBoundary, v as FONT_GROUPS, w as __exportAll, x as RHYTHM_CHOICES, y as NAMED_PRESETS, z as Badge } from "./router-DspHHMnI.mjs";
+import { $ as useReducedMotion, A as ScrollScene, B as Card, C as TINT_CLASS, E as GsapCount, G as PanelWell, H as Media, K as Progress, M as useInView, O as Magnetic, Q as scrollToId, S as TABS, T as Mark, U as Panel, V as Kbd, X as easeOut, Y as cn, Z as registerGsap, _ as FONT_CLASS, a as isStaleChunkError, b as READING_PROFILES, et as wordCount, g as FONT_CHOICES, h as DARK_SCHEMES, i as friendlyViewError, j as StaggerBlock, m as COLOR_SCHEMES, o as reloadView, p as Button, q as Separator, r as TabErrorBoundary, v as FONT_GROUPS, w as __exportAll, x as RHYTHM_CHOICES, y as NAMED_PRESETS, z as Badge } from "./router-BhUcEtEs.mjs";
 import { t as create } from "../_libs/zustand.mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
 import { t as Root } from "../_libs/radix-ui__react-label.mjs";
@@ -17,7 +17,7 @@ import { t as Icon } from "../_libs/iconify__react.mjs";
 import { a as DialogOverlay$1, i as DialogDescription$1, o as DialogPortal, r as DialogContent$1, s as DialogTitle$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
 import { a as Trigger$1, i as Root3, n as Portal, r as Provider, t as Content2$2 } from "../_libs/@radix-ui/react-tooltip+[...].mjs";
 import { t as Drawer } from "../_libs/vaul.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/store-PRmB33Ox.js
+//#region node_modules/.nitro/vite/services/ssr/assets/store-DirRbn93.js
 /**
 * WCAG 2.2 contrast (relative luminance, SC 1.4.3 / 1.4.6 / 1.4.11).
 *
@@ -3060,7 +3060,7 @@ function processBionicText(text, strength = .5, rhythmOverride = false) {
 	}).join("");
 }
 //#endregion
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-CFhoKWK7.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-Bg4iLR7G.js
 var SAMPLE_TEXTS = [
 	{
 		title: "Academic abstract",
@@ -4017,6 +4017,13 @@ function textFromItems(items) {
 	paragraphs.push(current);
 	return paragraphs.map((paragraph) => paragraph.trim()).filter(Boolean).join("\n\n");
 }
+/**
+* Ceiling for a pasted or uploaded text file.
+*
+* PDFs are no longer held to it — they are read in full. This remains for
+* plain text, where the whole document arrives as one string with no page
+* structure to fall back on.
+*/
 var MAX_EXTRACT_CHARS = 4e5;
 function summarize(content, title, format, pageCount) {
 	const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
@@ -4110,26 +4117,14 @@ async function processPdf(file) {
 			if (/password/i.test(detail)) throw new Error("That PDF is password-protected. Paste the text instead.");
 			throw new Error("Could not read that PDF. Try a text file, or paste the contents.");
 		}
-		const pages = Math.min(pdf.numPages, 200);
+		const pages = pdf.numPages;
 		const pageTexts = [];
-		let hasImages = false;
-		let charBudget = MAX_EXTRACT_CHARS;
 		try {
 			for (let i = 1; i <= pages; i += 1) {
 				const page = await pdf.getPage(i);
-				if (!hasImages) try {
-					hasImages = operatorListHasImages((await page.getOperatorList()).fnArray, pdfjs.OPS);
-				} catch {
-					hasImages = true;
-				}
-				const strings = textFromItems((await page.getTextContent()).items.flatMap((item) => "str" in item ? [item] : []));
-				if (charBudget <= 0) {
-					pageTexts.push("");
-					continue;
-				}
-				const clipped = strings.slice(0, charBudget);
-				charBudget -= clipped.length;
-				pageTexts.push(clipped);
+				const content = await page.getTextContent();
+				pageTexts.push(textFromItems(content.items.flatMap((item) => "str" in item ? [item] : [])));
+				page.cleanup();
 			}
 		} catch {
 			throw new Error("Could not read that PDF. Try a text file, or paste the contents.");
@@ -4140,33 +4135,16 @@ async function processPdf(file) {
 		const joined = joinPdfPages(pageTexts);
 		const words = extracted ? extracted.split(/\s+/).length : 0;
 		const summary = summarize(extracted || name, titleFrom(name, /\.pdf$/i), "PDF", pages);
-		const droppedPages = Math.max(0, pdf.numPages - pages);
 		return {
 			...summary,
 			content: joined,
 			metadata: {
 				...summary.metadata,
 				wordCount: words,
-				estimatedReadTime: Math.max(1, Math.ceil((words || pages * 80) / 200)),
-				hasImages,
-				droppedPages
+				estimatedReadTime: Math.max(1, Math.ceil((words || pages * 80) / 200))
 			}
 		};
 	});
-}
-function operatorListHasImages(fnArray, ops) {
-	const codes = new Set([
-		ops.paintImageXObject,
-		ops.paintImageMaskXObject,
-		ops.paintInlineImageXObject,
-		ops.paintJpegXObject,
-		ops.paintImageXObjectRepeat,
-		ops.paintInlineImageXObjectGroup,
-		ops.paintImageMaskXObjectRepeat,
-		ops.paintImageMaskXObjectGroup,
-		ops.paintSolidColorImageMask
-	].filter((code) => typeof code === "number"));
-	return fnArray.some((fn) => codes.has(fn));
 }
 async function processDocument(file) {
 	if (!file) throw new Error("No file selected.");
@@ -5316,9 +5294,7 @@ function Landing() {
 				wordCount: doc.metadata.wordCount,
 				readTime: doc.metadata.estimatedReadTime
 			});
-			const dropped = doc.metadata.droppedPages ?? 0;
-			if (dropped > 0) toast.warning(`Read the first ${doc.metadata.pageCount} pages. The last ${dropped} were left out — this reader caps long PDFs.`);
-			else toast.success("Document ready");
+			toast.success("Document ready");
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Could not read that file.");
 			toast.error(err instanceof Error ? err.message : "Could not read that file");
@@ -13270,12 +13246,12 @@ function lazyView(load, exportName) {
 		}
 	});
 }
-var Library$1 = lazyView(() => import("./library-nkbSmSHV.mjs"), "Library");
-var Insights = lazyView(() => import("./insights-BDVQ-ZEq.mjs"), "Insights");
-var SettingsPanel = lazyView(() => import("./settings-panel-Cg8_h3El.mjs"), "SettingsPanel");
+var Library$1 = lazyView(() => import("./library-lWfYqTSb.mjs"), "Library");
+var Insights = lazyView(() => import("./insights-BswGks9P.mjs"), "Insights");
+var SettingsPanel = lazyView(() => import("./settings-panel-QOyDtXRE.mjs"), "SettingsPanel");
 var CommandPalette = (0, import_react.lazy)(async () => {
 	try {
-		return { default: (await import("./command-palette-CaJV98tp.mjs")).CommandPalette };
+		return { default: (await import("./command-palette-BoJU9t1t.mjs")).CommandPalette };
 	} catch {
 		return { default: function PaletteUnavailable() {
 			return null;

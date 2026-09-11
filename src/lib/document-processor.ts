@@ -10,14 +10,17 @@ export interface ProcessedDocument {
     pageCount?: number;
     wordCount: number;
     estimatedReadTime: number;
-    hasImages?: boolean;
-    /** Pages beyond the extraction cap that were left out, if any. */
-    droppedPages?: number;
   };
 }
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-export const MAX_PDF_PAGES = 200;
+/**
+ * Ceiling for a pasted or uploaded text file.
+ *
+ * PDFs are no longer held to it — they are read in full. This remains for
+ * plain text, where the whole document arrives as one string with no page
+ * structure to fall back on.
+ */
 export const MAX_EXTRACT_CHARS = 400_000;
 
 function summarize(content: string, title: string, format: string, pageCount?: number): ProcessedDocument {
@@ -144,34 +147,25 @@ async function processPdf(file: File): Promise<ProcessedDocument> {
       throw new Error("Could not read that PDF. Try a text file, or paste the contents.");
     }
 
-    const pages = Math.min(pdf.numPages, MAX_PDF_PAGES);
+    // Every page. A book is not less of a book past some page number, and a
+    // reader who uploads one and silently gets two hundred pages of it has
+    // been given a worse thing than an error.
+    const pages = pdf.numPages;
     const pageTexts: string[] = [];
-    let hasImages = false;
-    let charBudget = MAX_EXTRACT_CHARS;
     try {
       for (let i = 1; i <= pages; i += 1) {
         const page = await pdf.getPage(i);
-        if (!hasImages) {
-          try {
-            const ops = await page.getOperatorList();
-            hasImages = operatorListHasImages(ops.fnArray, pdfjs.OPS);
-          } catch {
-            hasImages = true;
-          }
-        }
         const content = await page.getTextContent();
         // Rebuilt from the runs' own geometry. Joining them with a space and
         // flattening the whitespace put spaces inside words and ran headings
         // into the paragraph beneath them.
         // `items` also carries marked-content markers, which hold no text.
-        const strings = textFromItems(content.items.flatMap((item) => ("str" in item ? [item] : [])));
-        if (charBudget <= 0) {
-          pageTexts.push("");
-          continue;
-        }
-        const clipped = strings.slice(0, charBudget);
-        charBudget -= clipped.length;
-        pageTexts.push(clipped);
+        pageTexts.push(textFromItems(content.items.flatMap((item) => ("str" in item ? [item] : []))));
+        // Hand back the page's parsed operators and fonts now that its text
+        // has been taken. Without this pdf.js holds every page it has touched,
+        // so memory climbs with the length of the book — which is the thing
+        // that actually decides whether a long one can be opened on a phone.
+        page.cleanup();
       }
     } catch {
       throw new Error("Could not read that PDF. Try a text file, or paste the contents.");
@@ -183,11 +177,7 @@ async function processPdf(file: File): Promise<ProcessedDocument> {
     const name = fileName(file);
     const joined = joinPdfPages(pageTexts);
     const words = extracted ? extracted.split(/\s+/).length : 0;
-    // The page count of what was actually read, not of the file. Reporting the
-    // file's total while holding only the first two hundred pages made the app
-    // claim content it did not have.
     const summary = summarize(extracted || name, titleFrom(name, /\.pdf$/i), "PDF", pages);
-    const droppedPages = Math.max(0, pdf.numPages - pages);
     return {
       ...summary,
       content: joined,
@@ -195,28 +185,9 @@ async function processPdf(file: File): Promise<ProcessedDocument> {
         ...summary.metadata,
         wordCount: words,
         estimatedReadTime: Math.max(1, Math.ceil((words || pages * 80) / 200)),
-        hasImages,
-        droppedPages,
       },
     };
   });
-}
-
-function operatorListHasImages(fnArray: number[], ops: Record<string, number>): boolean {
-  const codes = new Set(
-    [
-      ops.paintImageXObject,
-      ops.paintImageMaskXObject,
-      ops.paintInlineImageXObject,
-      ops.paintJpegXObject,
-      ops.paintImageXObjectRepeat,
-      ops.paintInlineImageXObjectGroup,
-      ops.paintImageMaskXObjectRepeat,
-      ops.paintImageMaskXObjectGroup,
-      ops.paintSolidColorImageMask,
-    ].filter((code) => typeof code === "number"),
-  );
-  return fnArray.some((fn) => codes.has(fn));
 }
 
 export async function processDocument(file: File): Promise<ProcessedDocument> {

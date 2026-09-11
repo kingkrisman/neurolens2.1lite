@@ -655,7 +655,7 @@ function Mark({ className, detail = false }) {
 	});
 }
 //#endregion
-//#region node_modules/.nitro/vite/services/ssr/assets/router-DspHHMnI.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-BhUcEtEs.js
 var __defProp = Object.defineProperty;
 var __exportAll = (all, no_symbols) => {
 	let target = {};
@@ -1760,7 +1760,7 @@ var Route$7 = createRootRoute({
 		] })]
 	})
 });
-var $$splitComponentImporter$2 = () => import("./routes-CFhoKWK7.mjs").then((n) => n.t);
+var $$splitComponentImporter$2 = () => import("./routes-Bg4iLR7G.mjs").then((n) => n.t);
 var TAB_IDS = new Set(TABS.map((tab) => tab.id));
 var Route$6 = createFileRoute("/")({
 	/**
@@ -1777,9 +1777,9 @@ var Route$6 = createFileRoute("/")({
 	},
 	component: lazyRouteComponent($$splitComponentImporter$2, "component")
 });
-var $$splitComponentImporter$1 = () => import("./privacy-Cm61zL_I.mjs");
+var $$splitComponentImporter$1 = () => import("./privacy-3SOkRBAa.mjs");
 var Route$5 = createFileRoute("/privacy")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
-var $$splitComponentImporter = () => import("./thank-you-Bs9ktV-h.mjs");
+var $$splitComponentImporter = () => import("./thank-you-BvvjG8Ii.mjs");
 var Route$4 = createFileRoute("/thank-you")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 /** Same-origin API proxies: timeout plus one retry on 5xx / network, never on timeout. */
 function sleep(ms) {

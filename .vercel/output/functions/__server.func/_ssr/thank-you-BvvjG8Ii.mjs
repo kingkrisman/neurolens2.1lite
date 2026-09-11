@@ -1,6 +1,6 @@
 import { b as require_jsx_runtime } from "../_libs/@radix-ui/react-accordion+[...].mjs";
-import { n as PublicLayout } from "./router-DspHHMnI.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/thank-you-Bs9ktV-h.js
+import { n as PublicLayout } from "./router-BhUcEtEs.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/thank-you-BvvjG8Ii.js
 var import_jsx_runtime = require_jsx_runtime();
 function ThankYou() {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(PublicLayout, {

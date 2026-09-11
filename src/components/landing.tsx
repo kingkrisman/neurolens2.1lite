@@ -179,16 +179,7 @@ export function Landing() {
         wordCount: doc.metadata.wordCount,
         readTime: doc.metadata.estimatedReadTime,
       });
-      // Silently returning the first 200 pages of a longer book is the kind of
-      // loss someone only discovers when the ending is missing.
-      const dropped = doc.metadata.droppedPages ?? 0;
-      if (dropped > 0) {
-        toast.warning(
-          `Read the first ${doc.metadata.pageCount} pages. The last ${dropped} were left out — this reader caps long PDFs.`,
-        );
-      } else {
-        toast.success("Document ready");
-      }
+      toast.success("Document ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that file.");
       toast.error(err instanceof Error ? err.message : "Could not read that file");
